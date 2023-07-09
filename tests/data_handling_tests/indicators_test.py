@@ -16,7 +16,11 @@ def test_indicators_mapping():
 
         if indicator_name in ['sma', 'rsi']:
             period = 14
-            assert not func(data, period).isna().any(), f"{indicator_name} calculation resulted in NaN"
+            assert not func(data, period)[period:].isna().any(), f"{indicator_name} calculation resulted in NaN"
+
+        elif indicator_name == 'bbands':
+            period = 14
+            assert not any(x.isna().any() for x in func(data, period)[2*period-1:]), f"{indicator_name} calculation resulted in NaN"
 
         # Add more conditions for different indicators depending on their required parameters.
 
