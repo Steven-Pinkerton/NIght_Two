@@ -1,6 +1,6 @@
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-import talib as ta
+
 
 def preprocess_data(filename):
     """
