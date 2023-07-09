@@ -13,10 +13,11 @@ def download_data(ticker, start_date, end_date, period='1d'):
     Returns:
     pandas.DataFrame: the historical market data for the given ticker and date range.
     """
-    # Download historical data as a pandas DataFrame
-        # Download historical data as a pandas DataFrame
     try:
         data = yf.download(ticker, start=start_date, end=end_date, interval=period)
+        if data.empty:
+            print(f"No data available for {ticker}")
+            return None
     except Exception as e:
         print(f"Error occurred while trying to download data for {ticker}: {e}")
         return None
