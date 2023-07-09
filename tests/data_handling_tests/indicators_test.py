@@ -24,4 +24,6 @@ def test_indicators_mapping():
 
         # Add more conditions for different indicators depending on their required parameters.
 
+    print("All tests passed successfully!")
+
 test_indicators_mapping()
