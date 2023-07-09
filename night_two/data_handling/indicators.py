@@ -1,3 +1,7 @@
+import talib as ta
+import pandas as pd
+import numpy as np
+
 INDICATORS = {
     'sma': {'func': calculate_sma, 'params': ['period']},
     'rsi': {'func': calculate_rsi, 'params': ['period']},
@@ -83,7 +87,7 @@ def calculate_adx(data: pd.DataFrame, period: int) -> pd.Series:
     return ta.ADX(data['High'], data['Low'], data['Close'], timeperiod=period)
 
 def calculate_ichimoku(data: pd.DataFrame) -> pd.DataFrame:
-    return data_utils.calculate_ichimoku(data)
+    return calculate_ichimoku(data)
 
 def calculate_ichimoku(data):
     high_prices = data['High']
