@@ -9,6 +9,7 @@ class TradingEnvironment:
         # Initialize the data
         self.data = self.load_data(data_source)
         self.current_step = 0
+        self.initial_cash_balance = initial_cash_balance
 
         # Initialize account balances and transactions costs
         self.cash_balance = initial_cash_balance
