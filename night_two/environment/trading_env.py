@@ -4,10 +4,10 @@ from indicators import INDICATORS
 
 class TradingEnvironment:
     def __init__(self, initial_cash_balance=10000.0, transaction_cost=0.01, data_source='russell_2000_daily.csv'):
-        # ... other parts of the code
 
         # Initialize the data
         self.data = self.load_data(data_source)
+        self.original_market_data = self.data.copy()  # store the original data
         self.current_step = 0
         self.initial_cash_balance = initial_cash_balance
 
@@ -63,6 +63,9 @@ class TradingEnvironment:
         # Define chosen indicators
         self.chosen_indicators = {}
         
+        self.risk_adjusted_return_history = []
+        self.portfolio_value_history = []
+
         self.max_action = self.calculate_max_action()
         
         # Initialize the indicators
@@ -252,11 +255,11 @@ class TradingEnvironment:
             cost = current_price * amount
 
             # If sufficient balance is available, update portfolio and balance
-            if self.balance >= cost:
+            if self.cash_balance >= cost:
                 if symbol not in self.portfolio:
                     self.portfolio[symbol] = 0
                 self.portfolio[symbol] += amount
-                self.balance -= cost
+                self.cash_balance -= cost
 
                 # Store buy price
                 if symbol not in self.buy_prices:
@@ -269,7 +272,7 @@ class TradingEnvironment:
                 self.portfolio[symbol] -= amount
                 if self.portfolio[symbol] == 0:
                     del self.portfolio[symbol]
-                self.balance += current_price * amount
+                self.cash_balance += current_price * amount
 
                 # Store sell price and count winning trades
                 if symbol not in self.sell_prices:
@@ -294,6 +297,54 @@ class TradingEnvironment:
             'Total Trades': 0  # No trades at the start
         }
 
+    def update_market_state(self):
+        if self.current_step < len(self.market_data) - 1:
+            # If we haven't stepped past the latest available data, advance to the next time step
+            self.current_step += 1
+            # Else, we maintain the current_step to be the last index of the market_data
+
+        # Update market_state to reflect the data at the current step
+        self.market_state = self.market_data.iloc[self.current_step]
+
+    def is_valid_action(self, action):
+        # Check that action is a dictionary containing the necessary keys
+        if not isinstance(action, dict):
+            return False
+        if not {'symbol', 'type', 'amount'}.issubset(action.keys()):
+            return False
+        
+        # Check that action type is in the action space
+        if action['type'] not in self.action_space:
+            return False
+
+        # Check that the action symbol is in the current market state (i.e., it's a tradable asset)
+        if action['symbol'] not in self.market_state.keys():
+            return False
+
+        # Check that the action amount is a non-negative number
+        if not isinstance(action['amount'], (int, float)) or action['amount'] < 0:
+            return False
+
+        return True
+
+    def recalculate_market_data(self):
+        # Reset the market data to the original data
+        self.market_data = self.original_market_data.copy()
+
+        # Recalculate each indicator in the chosen indicators with the updated settings
+        for indicator_name, settings in self.indicator_settings.items():
+            # Get the function and parameter names for this indicator
+            func = INDICATORS.get(indicator_name)['func']
+            param_names = INDICATORS.get(indicator_name)['params']
+
+            # Create a dictionary of parameter values from the updated indicator settings
+            func_params = {name: settings[name] for name in param_names}
+
+            # Calculate the indicator and update the market data
+            self.market_data = func(self.market_data, **func_params)
+
+        return self.market_data
+    
     def update_metrics(self):
         # Update metrics
         current_portfolio_value = self.calculate_portfolio_value()
