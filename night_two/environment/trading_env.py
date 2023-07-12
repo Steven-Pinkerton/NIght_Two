@@ -1,6 +1,6 @@
 import numpy as np
-from data_preprocessing import preprocess_data
-from indicators import INDICATORS
+from night_two.data_handling.data_preprocessing import preprocess_data
+from night_two.data_handling.indicators import INDICATORS
 
 class TradingEnvironment:
     def __init__(self, initial_cash_balance=10000.0, transaction_cost=0.01, data_source='russell_2000_daily.csv'):
