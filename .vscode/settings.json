@@ -1,5 +1,6 @@
 {
     "python.analysis.extraPaths": [
         "./night_two/data_handling"
+        , "./night_two/environment"
     ]
 }
