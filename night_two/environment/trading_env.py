@@ -1,22 +1,12 @@
 import numpy as np
+import pandas as pd
 from night_two.data_handling.data_preprocessing import preprocess_data
 from night_two.data_handling.indicators import INDICATORS
 
 class TradingEnvironment:
     def __init__(self, initial_cash_balance=10000.0, transaction_cost=0.01, data_source='russell_2000_daily.csv'):
-
-        # Initialize the data
-        self.data = self.load_market_data(data_source)
-        self.original_market_data = self.data.copy()  # store the original data
-        self.current_step = 0
-        self.initial_cash_balance = initial_cash_balance
-
-        # Initialize account balances and transactions costs
-        self.cash_balance = initial_cash_balance
-        self.transaction_cost = transaction_cost
-        self.portfolio = defaultdict(float)
-        
         # Define all available indicators and their default settings
+
         self.all_indicators = {
             'sma': {'period': 30},
             'rsi': {'period': 14},
@@ -59,9 +49,23 @@ class TradingEnvironment:
             'kst': {'rc1': 10, 'rc2': 15, 'rc3': 20, 'rc4': 30, 'sma1': 10, 'sma2': 10, 'sma3': 10, 'sma4': 15},
             'force_index': {'period': 13},
         }
+        
+        # Assign all indicators to chosen_indicators
+        self.chosen_indicators = self.all_indicators
 
-        # Define chosen indicators
-        self.chosen_indicators = {}
+
+        # Initialize the data
+        self.data = self.load_market_data(data_source)
+        self.original_market_data = self.data.copy()  # store the original data
+        self.current_step = 0
+        self.initial_cash_balance = initial_cash_balance
+
+        # Initialize account balances and transactions costs
+        self.cash_balance = initial_cash_balance
+        self.transaction_cost = transaction_cost
+        self.portfolio = defaultdict(float)
+            
+    
         
         self.risk_adjusted_return_history = []
         self.portfolio_value_history = []
@@ -70,12 +74,12 @@ class TradingEnvironment:
         
         # Initialize the indicators
         self.indicator_values = {name: None for name in self.all_indicators.keys()}
-
+  
     def calculate_max_action(self):
-        # Define the possible percentages
+         # Define the possible percentages
         percentages = list(range(10, 110, 10))  # 10%, 20%, ..., 100%
 
-        # Define the action space
+         # Define the action space
         actions = self.define_action_space()
 
         # Calculate max_action
@@ -85,9 +89,13 @@ class TradingEnvironment:
         return max_action
 
     def load_market_data(self, data_source):
-        self.market_data = preprocess_data(data_source)
-        self.calculate_indicators(self.all_indicators)
-        return self.market_data
+        # Load data from the specified source
+        data = pd.read_csv(data_source)
+
+        # Calculate all indicators on the data
+        self.calculate_indicators()  # Here, don't pass self.all_indicators
+
+        return data
 
     def initialize_state(self):
         # Initialize the portfolio and cash balance
@@ -392,22 +400,18 @@ class TradingEnvironment:
         settings_vector = np.array(list(settings.values()))
         return settings_vector
 
-    def calculate_indicators(self):
-        for indicator_name in self.chosen_indicators:
-            indicator = INDICATORS.get(indicator_name)
-
-            if indicator:
-                # Get the function and parameter names for this indicator
-                func = indicator['func']
-                param_names = indicator['params']
-
-                # Create a dictionary of parameter values from the input indicators
-                func_params = {name: INDICATORS[indicator_name]['params'][name] for name in param_names}
-
-                # Calculate the indicator and update the market data
-                self.market_data = func(self.market_data, **func_params)
-            else:
-                print(f"Warning: Indicator '{indicator_name}' is not defined. Skipping.")
+    def calculate_indicators(indicator_data, params_values):
+        indicators = {}
+        for indicator_name, indicator_info in INDICATORS.items():
+            print(f"Checking indicator: {indicator_name}")
+            print(f"Indicator name: {indicator_name}")
+            print(f"Param names: {indicator_info['params']}")
+            params = {}
+            for param_name in indicator_info['params']:
+                params[param_name] = params_values.get(param_name)
+            print(f"Param values: {params}")
+            indicators[indicator_name] = indicator_info['func'](indicator_data, **params)
+        return indicators
                 
     def run_episode(self):
         self.env.reset()  # reset the environment to its initial state at the start of an episode
