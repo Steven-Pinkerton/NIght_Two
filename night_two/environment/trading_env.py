@@ -6,7 +6,7 @@ class TradingEnvironment:
     def __init__(self, initial_cash_balance=10000.0, transaction_cost=0.01, data_source='russell_2000_daily.csv'):
 
         # Initialize the data
-        self.data = self.load_data(data_source)
+        self.data = self.load_market_data(data_source)
         self.original_market_data = self.data.copy()  # store the original data
         self.current_step = 0
         self.initial_cash_balance = initial_cash_balance

@@ -1,5 +1,8 @@
 import unittest
 from collections import defaultdict
+from unittest.mock import patch
+import pytest
+
 from night_two.environment.trading_env import TradingEnvironment
 
 class TestTradingEnvironment(unittest.TestCase):
@@ -30,7 +33,7 @@ class TestTradingEnvironment(unittest.TestCase):
         # Check that max_action is None
         self.assertIsNone(self.env.max_action)
 
-    @patch("pandas.DataFrame", autospec=True)  # Mocking pandas DataFrame
+    @patch('pandas.DataFrame', autospec=True)
     def test_calculate_max_action(self, mock_df):
         # Mock the market_data attribute
         self.env.market_data = mock_df
