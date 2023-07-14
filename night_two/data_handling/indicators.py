@@ -72,13 +72,24 @@ def calculate_ichimoku(data):
 
     return data
 
-def calculate_atr_trailing_stops(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
-    # TODO: Implement this function. TA-Lib doesn't have this function. 
-    pass
+def calculate_atr_trailing_stops(high: pd.Series, low: pd.Series, close: pd.Series, atr_period: int = 14) -> pd.Series:
+    atr = talib.ATR(high, low, close, timeperiod=atr_period)
+    stop = close.copy()
+    
+    for i in range(atr_period, len(close)):
+        if close[i] > stop[i-1]:
+            stop[i] = max(stop[i-1], close[i] - atr[i])
+        else:
+            stop[i] = min(stop[i-1], close[i] + atr[i])
 
-def calculate_linear_regression(data: pd.DataFrame) -> pd.DataFrame:
-    # TODO: Implement this function. TA-Lib doesn't have this function. 
-    pass
+    return stop
+
+def calculate_linear_regression(data: pd.DataFrame, window: int = 14) -> pd.DataFrame:
+    data['LR_Slope'] = data['Close'].rolling(window=window).apply(lambda x: linregress(np.arange(window), x)[0])
+    data['LR_Intercept'] = data['Close'].rolling(window=window).apply(lambda x: linregress(np.arange(window), x)[1])
+    data['LR'] = data['LR_Slope'] * np.arange(len(data)) + data['LR_Intercept']
+    
+    return data
 
 def calculate_cmo(data: pd.DataFrame, period: int) -> pd.Series:
     return ta.CMO(data['Close'], timeperiod=period)
