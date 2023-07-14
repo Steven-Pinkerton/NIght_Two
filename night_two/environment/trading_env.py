@@ -123,7 +123,7 @@ class TradingEnvironment:
 
     def calculate_max_action(self):
         # Define the possible percentages
-        percentages = [i for i in range(0, 101, 10)]0%
+        percentages = [i for i in range(0, 101, 10)]
 
         # Define the action space
         actions = ['buy', 'sell', 'hold']
