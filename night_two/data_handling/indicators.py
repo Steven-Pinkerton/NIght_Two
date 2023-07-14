@@ -1,6 +1,7 @@
 import talib as ta
 import pandas as pd
 import numpy as np
+from scipy.stats import linregress
 
 def calculate_sma(data: pd.DataFrame, period: int) -> pd.Series:
     return ta.SMA(data['Close'], timeperiod=period)
@@ -85,9 +86,12 @@ def calculate_atr_trailing_stops(high: pd.Series, low: pd.Series, close: pd.Seri
     return stop
 
 def calculate_linear_regression(data: pd.DataFrame, window: int = 14) -> pd.DataFrame:
+    data['original_index'] = data.index
+    data.reset_index(drop=True, inplace=True)
+    
     data['LR_Slope'] = data['Close'].rolling(window=window).apply(lambda x: linregress(np.arange(window), x)[0])
     data['LR_Intercept'] = data['Close'].rolling(window=window).apply(lambda x: linregress(np.arange(window), x)[1])
-    data['LR'] = data['LR_Slope'] * np.arange(len(data)) + data['LR_Intercept']
+    data['LR'] = data['LR_Slope'] * data.index.to_series() + data['LR_Intercept']
     
     return data
 
@@ -493,29 +497,6 @@ def calculate_atr_trailing_stops(high, low, close, atr_period=14, multiplier=3):
             atr_trailing_stop[i] = min(atr_trailing_stop[i - 1], close[i] + multiplier * atr[i])
 
     return atr_trailing_stop
-
-def calculate_linear_regression(data, window=14):
-    """
-    Calculate linear regression line and linear regression indicator.
-
-    Args:
-        data (pandas.DataFrame): The market data.
-        window (int): The window period for calculating the linear regression.
-
-    Returns:
-        pandas.DataFrame: The market data with additional columns for linear regression and indicator.
-    """
-    # Calculate the linear regression line for the closing prices over the window period
-    data['LR_Slope'] = data['Close'].rolling(window=window).apply(lambda x: np.polyfit(np.arange(window), x, 1)[0])
-    data['LR_Intercept'] = data['Close'].rolling(window=window).apply(lambda x: np.polyfit(np.arange(window), x, 1)[1])
-
-    # Calculate the linear regression line
-    data['LR'] = data['LR_Slope'] * np.arange(window) + data['LR_Intercept']
-
-    # Calculate the linear regression indicator
-    data['LR_Indicator'] = data['Close'] - data['LR']
-
-    return data
 
 def calculate_coppock(data, short_roc_period=11, long_roc_period=14, wma_period=10):
     """
