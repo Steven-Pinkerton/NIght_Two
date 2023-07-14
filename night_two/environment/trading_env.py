@@ -120,7 +120,6 @@ class TradingEnvironment:
 
         self.max_action = self.calculate_max_action()
 
-  
     def calculate_max_action(self):
          # Define the possible percentages
         percentages = list(range(10, 110, 10))  # 10%, 20%, ..., 100%
@@ -134,9 +133,10 @@ class TradingEnvironment:
 
         return max_action
 
+
     def load_market_data(self, data_source):
         # Load the market data from the data source
-        market_data = load_data_from_source(data_source)  # replace with the actual code to load data
+        market_data = pd.read_csv(data_source)
 
         # Extract the required Series from the DataFrame
         data_series = {
