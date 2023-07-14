@@ -1,6 +1,7 @@
 import unittest
 from collections import defaultdict
 from unittest.mock import patch
+from unittest.mock import MagicMock
 import pytest
 
 from night_two.environment.trading_env import TradingEnvironment
@@ -523,7 +524,7 @@ class TestTradingEnvironment(unittest.TestCase):
       
     def test_calculate_initial_metrics(self):
         # Instantiate the TradingEnv object
-        trading_env = TradingEnv()
+        trading_env = TradingEnvironment()
 
         # Call the calculate_initial_metrics function
         trading_env.calculate_initial_metrics()
@@ -642,10 +643,10 @@ class TestTradingEnvironment(unittest.TestCase):
         mock_total_trades = 20
 
         # Mock the methods
-        self.env.calculate_portfolio_value = MagicMock(return_value=mock_portfolio_value)
-        self.env.calculate_drawdown = MagicMock(return_value=mock_drawdown)
-        self.env.calculate_winning_trades = MagicMock(return_value=mock_winning_trades)
-        self.env.calculate_total_trades = MagicMock(return_value=mock_total_trades)
+        self.env.calculate_portfolio_value = unittest.mock.MagicMock(return_value=mock_portfolio_value)
+        self.env.calculate_drawdown = unittest.mock.MagicMock(return_value=mock_drawdown)
+        self.env.calculate_winning_trades = unittest.mock.MagicMock(return_value=mock_winning_trades)
+        self.env.calculate_total_trades = unittest.mock.MagicMock(return_value=mock_total_trades)
 
         # Call update_metrics function
         self.env.update_metrics()
@@ -719,7 +720,7 @@ class TestTradingEnvironment(unittest.TestCase):
     
     def test_update_indicator_settings(self):
         # Instantiate the TradingEnv object
-        trading_env = TradingEnv()
+        trading_env = TradingEnvironment()
 
         # Test case: known indicator with adjustable parameters
         new_sma_settings = {'period': 50}
@@ -736,7 +737,7 @@ class TestTradingEnvironment(unittest.TestCase):
     
     def test_indicator_settings_to_vector(self):
         # Instantiate the TradingEnv object
-        trading_env = TradingEnv()
+        trading_env = TradingEnvironment()
 
         # Test case: known indicator settings
         indicator_settings = {'sma': 50, 'ema': 30, 'rsi': 14}
@@ -745,7 +746,7 @@ class TestTradingEnvironment(unittest.TestCase):
     
     def test_calculate_indicators(self):
         # Instantiate the TradingEnv object
-        trading_env = TradingEnv()
+        trading_env = TradingEnvironment()
 
         # Define a known set of indicator settings
         trading_env.chosen_indicators = {
@@ -770,7 +771,7 @@ class TestTradingEnvironment(unittest.TestCase):
     ])
     def test_run_episode(total_rewards, expected_total_reward):
         # Initialize TradingEnv
-        trading_env = TradingEnv()
+        trading_env = TradingEnvironment()
 
         # Create a mock for the agent
         mock_agent = mock.Mock()
