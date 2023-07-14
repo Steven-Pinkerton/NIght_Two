@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from collections import defaultdict
 from night_two.data_handling.data_preprocessing import preprocess_data
 from night_two.data_handling.indicators import calculate_ad, calculate_adx, calculate_aroon, calculate_atr, calculate_atr_bands, calculate_atr_trailing_stops, calculate_bbands, calculate_cci, calculate_chaikin_money_flow, calculate_chaikin_oscillator, calculate_chaikin_volatility, calculate_cmo, calculate_coppock, calculate_donchian_channels, calculate_dpo, calculate_elder_ray_index, calculate_ema, calculate_force_index, calculate_hull_moving_average, calculate_ichimoku, calculate_keltner_channels, calculate_kst, calculate_linear_regression, calculate_macd, calculate_psar, calculate_pvt, calculate_rainbow_moving_averages, calculate_rsi, calculate_sma, calculate_standard_deviation_channels, calculate_tmf, calculate_trange, calculate_twiggs_momentum_oscillator, calculate_twiggs_trend_index, calculate_vol_oscillator, calculate_wilder_moving_average, calculate_williams_ad, calculate_wma 
 
@@ -121,15 +122,15 @@ class TradingEnvironment:
         self.max_action = self.calculate_max_action()
 
     def calculate_max_action(self):
-         # Define the possible percentages
-        percentages = list(range(10, 110, 10))  # 10%, 20%, ..., 100%
+        # Define the possible percentages
+        percentages = [i for i in range(0, 101, 10)]0%
 
-         # Define the action space
-        actions = self.define_action_space()
+        # Define the action space
+        actions = ['buy', 'sell', 'hold']
 
         # Calculate max_action
         # For each stock, there are 4 possible actions (Buy, Sell, Hold, Change Settings) and 10 possible percentages
-        max_action = len(self.market_data.columns) * len(actions) * len(percentages)
+        max_action = len(self.data.columns) * len(actions) * len(percentages)
 
         return max_action
 
