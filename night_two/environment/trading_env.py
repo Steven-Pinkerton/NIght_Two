@@ -1,11 +1,54 @@
 import numpy as np
 import pandas as pd
 from night_two.data_handling.data_preprocessing import preprocess_data
-from night_two.data_handling.indicators import INDICATORS
+from night_two.data_handling.indicators import calculate_ad, calculate_adx, calculate_aroon, calculate_atr, calculate_atr_bands, calculate_atr_trailing_stops, calculate_bbands, calculate_cci, calculate_chaikin_money_flow, calculate_chaikin_oscillator, calculate_chaikin_volatility, calculate_cmo, calculate_coppock, calculate_donchian_channels, calculate_dpo, calculate_elder_ray_index, calculate_ema, calculate_force_index, calculate_hull_moving_average, calculate_ichimoku, calculate_keltner_channels, calculate_kst, calculate_linear_regression, calculate_macd, calculate_psar, calculate_pvt, calculate_rainbow_moving_averages, calculate_rsi, calculate_sma, calculate_standard_deviation_channels, calculate_tmf, calculate_trange, calculate_twiggs_momentum_oscillator, calculate_twiggs_trend_index, calculate_vol_oscillator, calculate_wilder_moving_average, calculate_williams_ad, calculate_wma 
 
 class TradingEnvironment:
     def __init__(self, initial_cash_balance=10000.0, transaction_cost=0.01, data_source='russell_2000_daily.csv'):
         # Define all available indicators and their default settings
+        
+        self.INDICATORS = {
+            'sma': {'func': calculate_sma, 'params': {'period': None}},
+            'rsi': {'func': calculate_rsi, 'params': {'period': None}},
+            'bbands': {'func': calculate_bbands, 'params': {'period': None}},
+            'macd': {'func': calculate_macd, 'params': {'fastperiod': None, 'slowperiod': None, 'signalperiod': None}},
+            'psar': {'func': calculate_psar, 'params': {'acceleration': None, 'maximum': None}},
+            'trange': {'func': calculate_trange, 'params': {}},
+            'wma': {'func': calculate_wma, 'params': {'period': None}},
+            'ema': {'func': calculate_ema, 'params': {'period': None}},
+            'aroon': {'func': calculate_aroon, 'params': {'period': None}},
+            'atr': {'func': calculate_atr, 'params': {'period': None}},
+            'ad': {'func': calculate_ad, 'params': {}},
+            'adx': {'func': calculate_adx, 'params': {'period': None}},
+            'ichimoku': {'func': calculate_ichimoku, 'params': {}},
+            'atr_trailing_stops': {'func': calculate_atr_trailing_stops, 'params': {'high': None, 'low': None, 'close': None}},
+            'linear_regression': {'func': calculate_linear_regression, 'params': {}},
+            'cmo': {'func': calculate_cmo, 'params': {'period': None}},
+            'dpo': {'func': calculate_dpo, 'params': {'period': None}},
+            'vol_oscillator': {'func': calculate_vol_oscillator, 'params': {'short_period': None, 'long_period': None}},
+            'williams_ad': {'func': calculate_williams_ad, 'params': {}},
+            'cci': {'func': calculate_cci, 'params': {'timeperiod': None}},
+            'pvt': {'func': calculate_pvt, 'params': {}},
+            'tmf': {'func': calculate_tmf, 'params': {'timeperiod': None}},
+            'donchian_channels': {'func': calculate_donchian_channels, 'params': {'n': None}},
+            'keltner_channels': {'func': calculate_keltner_channels, 'params': {'n': None}},
+            'atr_bands': {'func': calculate_atr_bands, 'params': {'n': None}},
+            'elder_ray_index': {'func': calculate_elder_ray_index, 'params': {'n': None}},
+            'hull_moving_average': {'func': calculate_hull_moving_average, 'params': {'n': None}},
+            'rainbow_moving_averages': {'func': calculate_rainbow_moving_averages, 'params': {'periods': None}},
+            'chaikin_money_flow': {'func': calculate_chaikin_money_flow, 'params': {'n': None}},
+            'chaikin_oscillator': {'func': calculate_chaikin_oscillator, 'params': {}},
+            'chaikin_volatility': {'func': calculate_chaikin_volatility, 'params': {'n': None}},
+            'standard_deviation_channels': {'func': calculate_standard_deviation_channels, 'params': {'n': None}},
+            'wilder_moving_average': {'func': calculate_wilder_moving_average, 'params': {'n': None}},
+            'twiggs_momentum_oscillator': {'func': calculate_twiggs_momentum_oscillator, 'params': {'n': None}},
+            'twiggs_trend_index': {'func': calculate_twiggs_trend_index, 'params': {'n': None}},
+            'atr_trailing_stops': {'func': calculate_atr_trailing_stops, 'params': {'high': None, 'low': None, 'close': None, 'atr_period': None, 'multiplier': None}},
+            'linear_regression': {'func': calculate_linear_regression, 'params': {'window': None}},
+            'coppock': {'func': calculate_coppock, 'params': {'short_roc_period': None, 'long_roc_period': None, 'wma_period': None}},
+            'kst': {'func': calculate_kst, 'params': {'rc1': None, 'rc2': None, 'rc3': None, 'rc4': None, 'sma1': None, 'sma2': None, 'sma3': None, 'sma4': None}},
+            'force_index': {'func': calculate_force_index, 'params': {'period': None}}
+        }
 
         self.all_indicators = {
             'sma': {'period': 30},
@@ -52,7 +95,13 @@ class TradingEnvironment:
         
         # Assign all indicators to chosen_indicators
         self.chosen_indicators = self.all_indicators
-
+        
+        
+        # Initialize params_values as a copy of all_indicators
+        self.params_values = self.all_indicators.copy()
+        
+        # Initialize the indicators
+        self.indicator_values = {name: None for name in self.all_indicators.keys()}
 
         # Initialize the data
         self.data = self.load_market_data(data_source)
@@ -65,15 +114,12 @@ class TradingEnvironment:
         self.transaction_cost = transaction_cost
         self.portfolio = defaultdict(float)
             
-    
-        
+
         self.risk_adjusted_return_history = []
         self.portfolio_value_history = []
 
         self.max_action = self.calculate_max_action()
-        
-        # Initialize the indicators
-        self.indicator_values = {name: None for name in self.all_indicators.keys()}
+
   
     def calculate_max_action(self):
          # Define the possible percentages
@@ -89,13 +135,34 @@ class TradingEnvironment:
         return max_action
 
     def load_market_data(self, data_source):
-        # Load data from the specified source
-        data = pd.read_csv(data_source)
+        # Load the market data from the data source
+        market_data = load_data_from_source(data_source)  # replace with the actual code to load data
 
-        # Calculate all indicators on the data
-        self.calculate_indicators()  # Here, don't pass self.all_indicators
+        # Extract the required Series from the DataFrame
+        data_series = {
+            'high': market_data['High'],
+            'low': market_data['Low'],
+            'close': market_data['Close'],
+            'volume': market_data['Volume']
+        }
 
-        return data
+        # Go through each indicator
+        for indicator_name, indicator_info in self.INDICATORS.items():
+            # Get the parameters defined in INDICATORS
+            indicator_params = indicator_info['params']
+            
+            # Go through each defined parameter
+            for param_name in indicator_params.keys():
+                if param_name in data_series.keys():
+                    # Assign the corresponding data series based on the parameter name
+                    indicator_info['params'][param_name] = data_series[param_name]
+                else:
+                    # Get the default parameter value from all_indicators
+                    default_param_value = self.all_indicators[indicator_name].get(param_name)
+                    if default_param_value is not None:
+                        indicator_info['params'][param_name] = default_param_value
+
+        return market_data
 
     def initialize_state(self):
         # Initialize the portfolio and cash balance
@@ -400,18 +467,47 @@ class TradingEnvironment:
         settings_vector = np.array(list(settings.values()))
         return settings_vector
 
-    def calculate_indicators(indicator_data, params_values):
-        indicators = {}
-        for indicator_name, indicator_info in INDICATORS.items():
-            print(f"Checking indicator: {indicator_name}")
-            print(f"Indicator name: {indicator_name}")
-            print(f"Param names: {indicator_info['params']}")
+    def calculate_indicators(self):
+        """Calculate the value for all indicators."""
+
+        # Ensure market data is loaded
+        if self.indicator_data is None:
+            raise Exception("Market data must be loaded before calculating indicators")
+
+        # Iterate over all indicators
+        for indicator_name, indicator_info in self.INDICATORS.items():
+            # Get the function to calculate the indicator
+            indicator_func = indicator_info['func']
+
+            # Iterate over all parameters for this indicator
             params = {}
-            for param_name in indicator_info['params']:
-                params[param_name] = params_values.get(param_name)
-            print(f"Param values: {params}")
-            indicators[indicator_name] = indicator_info['func'](indicator_data, **params)
-        return indicators
+            for param_name in indicator_info['params'].keys():
+                # Calculate the value for this parameter
+                param_value = self.calculate_parameter_value(indicator_name, param_name)
+
+                # Store the calculated parameter value
+                params[param_name] = param_value
+
+            # Calculate the indicator value with the determined parameters
+            indicator_value = indicator_func(self.indicator_data, **params)
+
+            # Store the calculated indicator value
+            self.indicator_values[indicator_name] = indicator_value
+
+                    
+    def calculate_parameter_value(self, indicator_name, param_name):
+        """Calculate the value for a specific parameter of a specific indicator."""
+
+        # Check if this parameter has a value set in params_values
+        if self.params_values and indicator_name in self.params_values and param_name in self.params_values[indicator_name]:
+            return self.params_values[indicator_name][param_name]
+
+        # If not, use the default value from all_indicators
+        if indicator_name in self.all_indicators and param_name in self.all_indicators[indicator_name]:
+            return self.all_indicators[indicator_name][param_name]
+
+        # If there is no default value, raise an exception
+        raise Exception(f"Cannot calculate value for parameter '{param_name}' of indicator '{indicator_name}'")
                 
     def run_episode(self):
         self.env.reset()  # reset the environment to its initial state at the start of an episode
