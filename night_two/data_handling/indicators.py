@@ -98,8 +98,9 @@ def calculate_linear_regression(data: pd.DataFrame, window: int = 14) -> pd.Data
 def calculate_cmo(data: pd.DataFrame, period: int) -> pd.Series:
     return ta.CMO(data['Close'], timeperiod=period)
 
-def calculate_dpo(data: pd.DataFrame, period: int) -> pd.Series:
-    return ta.DPO(data['Close'], timeperiod=period)
+def calculate_dpo(data: pd.Series, period: int):
+    dpo = data.shift(int((0.5 * period) + 1)) - data.rolling(period).mean()
+    return dpo
 
 def calculate_minus_di(data: pd.DataFrame, period: int) -> pd.Series:
     return ta.MINUS_DI(data['High'], data['Low'], data['Close'], timeperiod=period)
