@@ -44,7 +44,7 @@ class TradingEnvironment:
             'wilder_moving_average': {'func': calculate_wilder_moving_average, 'params': {'n': None}},
             'twiggs_momentum_oscillator': {'func': calculate_twiggs_momentum_oscillator, 'params': {'n': None}},
             'twiggs_trend_index': {'func': calculate_twiggs_trend_index, 'params': {'n': None}},
-            'atr_trailing_stops': {'func': calculate_atr_trailing_stops, 'params': {'high': None, 'low': None, 'close': None, 'atr_period': None, 'multiplier': None}},
+            'atr_trailing_stops': {'func': calculate_atr_trailing_stops, 'params': {'atr_period': None, 'multiplier': None}},
             'linear_regression': {'func': calculate_linear_regression, 'params': {'window': None}},
             'coppock': {'func': calculate_coppock, 'params': {'short_roc_period': None, 'long_roc_period': None, 'wma_period': None}},
             'kst': {'func': calculate_kst, 'params': {'rc1': None, 'rc2': None, 'rc3': None, 'rc4': None, 'sma1': None, 'sma2': None, 'sma3': None, 'sma4': None}},
@@ -76,7 +76,7 @@ class TradingEnvironment:
             'tmf': {'timeperiod': 21},
             'donchian_channels': {'n': 20},
             'keltner_channels': {'n': 20},
-            'atr_bands': {'n': 14},
+            'atr_trailing_stops': {'atr_period': 14, 'multiplier': 2},
             'elder_ray_index': {'n': 14},
             'hull_moving_average': {'n': 9},
             'rainbow_moving_averages': {'periods': 14},
@@ -106,6 +106,7 @@ class TradingEnvironment:
 
         # Initialize the data
         self.data = self.load_market_data(data_source)
+        self.indicator_data = self.data
         self.original_market_data = self.data.copy()  # store the original data
         self.current_step = 0
         self.initial_cash_balance = initial_cash_balance
