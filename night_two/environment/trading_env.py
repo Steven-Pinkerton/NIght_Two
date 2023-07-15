@@ -108,15 +108,6 @@ class TradingEnvironment:
             'volume': market_data['Volume']
         }
 
-        # Go through each indicator
-        for indicator_name, indicator_info in self.INDICATORS.items():
-            # Get the parameters defined in all_indicators
-            default_params = self.all_indicators[indicator_name]
-
-            # Go through each defined parameter
-            for param_name, default_value in default_params.items():
-                indicator_info['params'][param_name] = default_value
-
         return market_data
 
     def initialize_state(self):
@@ -132,8 +123,8 @@ class TradingEnvironment:
         # Initialize performance metrics
         self.performance_metrics = self.calculate_initial_metrics()
 
-        # Initialize chosen indicators with a copy of all indicators
-        self.chosen_indicators = self.all_indicators.copy()
+        # Initialize chosen indicators as empty dictionary
+        self.chosen_indicators = {}
 
         # Initialize previous action
         self.previous_action = None
@@ -178,7 +169,7 @@ class TradingEnvironment:
             # Convert the action into an index in the action space
             action_index = self.action_space.index(action)
             return np.array([action_index])
-
+        
     def define_action_space(self):
         # Define a discrete action space
         self.action_space = ['Buy', 'Sell', 'Hold', 'Change Settings']
@@ -200,7 +191,7 @@ class TradingEnvironment:
        # Check if the action involved changing indicator settings
         if action == 'change_indicator_settings':
             # Update technical indicator settings and recalculate market data with new settings
-            self.indicator_settings = self.update_indicator_settings()
+            self.chosen_indicators = self.update_indicator_settings()
             self.market_data = self.recalculate_market_data()
         
         # Update previous action
@@ -227,8 +218,8 @@ class TradingEnvironment:
         self.current_step = 0
         self.portfolio = 0
         self.cash_balance = self.initial_cash_balance
-        self.buy_prices = {}
-        self.sell_prices = {}
+        self.buy_price = 0
+        self.sell_price = 0
         self.winning_trades = 0
         self.total_trades = 0
         return self.state
@@ -281,25 +272,22 @@ class TradingEnvironment:
 
                 # If sufficient balance is available, update portfolio and balance
                 if self.cash_balance >= cost:
-                    self.portfolio[self.symbol] += amount
+                    self.num_shares += amount
                     self.cash_balance -= cost
 
                     # Store buy price
-                    self.buy_prices[self.symbol].append(current_price)
+                    self.buy_price = current_price
 
             elif action_type == 'sell':
                 # If sufficient stocks are available in the portfolio, update portfolio and balance
-                if self.portfolio[self.symbol] >= amount:
-                    self.portfolio[self.symbol] -= amount
-                    if self.portfolio[self.symbol] == 0:
-                        del self.portfolio[self.symbol]
+                if self.num_shares >= amount:
+                    self.num_shares -= amount
                     self.cash_balance += current_price * amount
 
                     # Store sell price and count winning trades
-                    self.sell_prices[self.symbol].append(current_price)
-                    if self.sell_prices[self.symbol][-1] > self.buy_prices[self.symbol][0]:  # FIFO strategy
+                    self.sell_price = current_price
+                    if self.sell_price > self.buy_price:  # FIFO strategy
                         self.winning_trades += 1
-                    del self.buy_prices[self.symbol][0]  # Remove the corresponding buy price
 
             # Increment total trades counter
             self.total_trades += 1
@@ -307,7 +295,7 @@ class TradingEnvironment:
             self.update_market_state()  # Update the market state after taking the action
 
     def calculate_initial_metrics(self):
-    # Calculate initial metrics
+        # Calculate initial metrics
         self.performance_metrics = {
             'Portfolio Value': self.calculate_portfolio_value(),
             'Running Average Value': self.calculate_portfolio_value(),  # Add this new metric
@@ -324,23 +312,6 @@ class TradingEnvironment:
 
         # Update market_state to reflect the data at the current step
         self.market_state = self.market_data.iloc[self.current_step]
-
-    def is_valid_action(self, action):
-        # Check that action is a dictionary containing the necessary keys
-        if not isinstance(action, dict):
-            return False
-        if not {'type', 'amount'}.issubset(action.keys()):
-            return False
-        
-        # Check that action type is in the action space
-        if action['type'] not in self.action_space:
-            return False
-
-        # Check that the action amount is a non-negative number
-        if not isinstance(action['amount'], (int, float)) or action['amount'] < 0:
-            return False
-
-        return True
 
     def recalculate_market_data(self):
         # Reset the market data to the original data
@@ -364,13 +335,13 @@ class TradingEnvironment:
             'Portfolio Value': current_portfolio_value,
             'Running Average Value': running_average_value,
             'Drawdown': self.calculate_drawdown(current_portfolio_value),
-            'Winning Trades': self.calculate_winning_trades(), 
-            'Total Trades': self.calculate_total_trades()  
+            'Winning Trades': self.winning_trades, 
+            'Total Trades': self.total_trades 
         }
 
     def calculate_portfolio_value(self):
-        # Assuming 'asset' is the name of the single asset
-        return self.market_state['asset'] * self.portfolio['asset'] if 'asset' in self.portfolio else 0
+        # Assuming 'close' is the closing price of the asset
+        return self.market_state['close'] * self.num_shares
 
     def calculate_drawdown(self, current_value):
         if not hasattr(self, 'historical_peaks'):
@@ -404,47 +375,30 @@ class TradingEnvironment:
         settings_vector = np.array(list(settings.values()))
         return settings_vector
 
-    def calculate_indicators(self):
+    def calculate_indicators(self, params_values=None):
         """Calculate the value for all chosen indicators."""
 
         # Ensure market data is loaded
         if self.indicator_data is None:
             raise Exception("Market data must be loaded before calculating indicators")
 
+        # If no new parameter values provided, use existing ones
+        params_values = params_values if params_values is not None else self.params_values
+
         # Iterate over all chosen indicators
         for indicator_name, settings in self.chosen_indicators.items():
             # Get the function to calculate the indicator
             indicator_func = self.INDICATORS[indicator_name]['func']
 
-            # Iterate over all parameters for this indicator
-            params = {}
-            for param_name, param_value in settings.items():
-                # Calculate the value for this parameter
-                param_value = self.calculate_parameter_value(indicator_name, param_name)
-
-                # Store the calculated parameter value
-                params[param_name] = param_value
+            # Get parameters for this indicator from provided values
+            params = params_values.get(indicator_name, {})
 
             # Calculate the indicator value with the determined parameters
             indicator_value = indicator_func(self.indicator_data, **params)
 
             # Store the calculated indicator value
             self.indicator_values[indicator_name] = indicator_value
-
-    def calculate_parameter_value(self, indicator_name, param_name):
-            """Calculate the value for a specific parameter of a specific indicator."""
-
-            # Check if this parameter has a value set in params_values
-            if self.params_values and indicator_name in self.params_values and param_name in self.params_values[indicator_name]:
-                return self.params_values[indicator_name][param_name]
-
-            # If not, use the default value from chosen_indicators
-            if indicator_name in self.chosen_indicators and param_name in self.chosen_indicators[indicator_name]:
-                return self.chosen_indicators[indicator_name][param_name]
-
-            # If there is no default value, raise an exception
-            raise ValueError(f"No value found for parameter '{param_name}' of indicator '{indicator_name}'. "
-                            f"Please provide a default value in chosen_indicators or specify a value in params_values.")      
+  
                
     def select_indicators(self, chosen_indicators):
         """
