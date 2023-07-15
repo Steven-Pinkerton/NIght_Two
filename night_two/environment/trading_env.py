@@ -2,101 +2,53 @@ import numpy as np
 import pandas as pd
 from collections import defaultdict
 from night_two.data_handling.data_preprocessing import preprocess_data
-from night_two.data_handling.indicators import calculate_ad, calculate_adx, calculate_aroon, calculate_atr, calculate_atr_bands, calculate_atr_trailing_stops, calculate_bbands, calculate_cci, calculate_chaikin_money_flow, calculate_chaikin_oscillator, calculate_chaikin_volatility, calculate_cmo, calculate_coppock, calculate_donchian_channels, calculate_dpo, calculate_elder_ray_index, calculate_ema, calculate_force_index, calculate_hull_moving_average, calculate_ichimoku, calculate_keltner_channels, calculate_kst, calculate_linear_regression, calculate_macd, calculate_psar, calculate_pvt, calculate_rainbow_moving_averages, calculate_rsi, calculate_sma, calculate_standard_deviation_channels, calculate_tmf, calculate_trange, calculate_twiggs_momentum_oscillator, calculate_twiggs_trend_index, calculate_vol_oscillator, calculate_wilder_moving_average, calculate_williams_ad, calculate_wma 
+from night_two.data_handling.indicators import calculate_ad, calculate_adx, calculate_aroon, calculate_atr, calculate_atr_bands, calculate_bbands, calculate_cci, calculate_chaikin_money_flow, calculate_chaikin_oscillator, calculate_chaikin_volatility, calculate_cmo, calculate_coppock, calculate_donchian_channels, calculate_dpo, calculate_elder_ray_index, calculate_ema, calculate_force_index, calculate_hull_moving_average, calculate_ichimoku, calculate_keltner_channels, calculate_kst, calculate_linear_regression, calculate_macd, calculate_psar, calculate_pvt, calculate_rainbow_moving_averages, calculate_rsi, calculate_sma, calculate_standard_deviation_channels, calculate_tmf, calculate_trange, calculate_twiggs_momentum_oscillator, calculate_twiggs_trend_index, calculate_vol_oscillator, calculate_wilder_moving_average, calculate_williams_ad, calculate_wma 
 
 class TradingEnvironment:
     def __init__(self, initial_cash_balance=10000.0, transaction_cost=0.01, data_source='russell_2000_daily.csv'):
         # Define all available indicators and their default settings
         
         self.INDICATORS = {
-            'sma': {'func': calculate_sma, 'params': {'period': None}},
-            'rsi': {'func': calculate_rsi, 'params': {'period': None}},
-            'bbands': {'func': calculate_bbands, 'params': {'period': None}},
-            'macd': {'func': calculate_macd, 'params': {'fastperiod': None, 'slowperiod': None, 'signalperiod': None}},
-            'psar': {'func': calculate_psar, 'params': {'acceleration': None, 'maximum': None}},
-            'trange': {'func': calculate_trange, 'params': {}},
-            'wma': {'func': calculate_wma, 'params': {'period': None}},
-            'ema': {'func': calculate_ema, 'params': {'period': None}},
-            'aroon': {'func': calculate_aroon, 'params': {'period': None}},
-            'atr': {'func': calculate_atr, 'params': {'period': None}},
-            'ad': {'func': calculate_ad, 'params': {}},
-            'adx': {'func': calculate_adx, 'params': {'period': None}},
-            'ichimoku': {'func': calculate_ichimoku, 'params': {}},
-            'linear_regression': {'func': calculate_linear_regression, 'params': {}},
-            'cmo': {'func': calculate_cmo, 'params': {'period': None}},
-            'dpo': {'func': calculate_dpo, 'params': {'period': None}},
-            'vol_oscillator': {'func': calculate_vol_oscillator, 'params': {'short_period': None, 'long_period': None}},
-            'williams_ad': {'func': calculate_williams_ad, 'params': {}},
-            'cci': {'func': calculate_cci, 'params': {'timeperiod': None}},
-            'pvt': {'func': calculate_pvt, 'params': {}},
-            'tmf': {'func': calculate_tmf, 'params': {'timeperiod': None}},
-            'donchian_channels': {'func': calculate_donchian_channels, 'params': {'n': None}},
-            'keltner_channels': {'func': calculate_keltner_channels, 'params': {'n': None}},
-            'atr_bands': {'func': calculate_atr_bands, 'params': {'n': None}},
-            'elder_ray_index': {'func': calculate_elder_ray_index, 'params': {'n': None}},
-            'hull_moving_average': {'func': calculate_hull_moving_average, 'params': {'n': None}},
-            'rainbow_moving_averages': {'func': calculate_rainbow_moving_averages, 'params': {'periods': None}},
-            'chaikin_money_flow': {'func': calculate_chaikin_money_flow, 'params': {'n': None}},
-            'chaikin_oscillator': {'func': calculate_chaikin_oscillator, 'params': {}},
-            'chaikin_volatility': {'func': calculate_chaikin_volatility, 'params': {'n': None}},
-            'standard_deviation_channels': {'func': calculate_standard_deviation_channels, 'params': {'n': None}},
-            'wilder_moving_average': {'func': calculate_wilder_moving_average, 'params': {'n': None}},
-            'twiggs_momentum_oscillator': {'func': calculate_twiggs_momentum_oscillator, 'params': {'n': None}},
-            'twiggs_trend_index': {'func': calculate_twiggs_trend_index, 'params': {'n': None}},
-            'atr_trailing_stops': {'func': calculate_atr_trailing_stops, 'params': {'high': None, 'low': None, 'close': None, 'atr_period': None, 'multiplier': None}},
-            'linear_regression': {'func': calculate_linear_regression, 'params': {'window': None}},
-            'coppock': {'func': calculate_coppock, 'params': {'short_roc_period': None, 'long_roc_period': None, 'wma_period': None}},
-            'kst': {'func': calculate_kst, 'params': {'rc1': None, 'rc2': None, 'rc3': None, 'rc4': None, 'sma1': None, 'sma2': None, 'sma3': None, 'sma4': None}},
-            'force_index': {'func': calculate_force_index, 'params': {'period': None}}
-        }
-
-        self.all_indicators = {
-            'sma': {'period': 30},
-            'rsi': {'period': 14},
-            'bbands': {'period': 20},
-            'macd': {'fastperiod': 12, 'slowperiod': 26, 'signalperiod': 9},
-            'psar': {'acceleration': 0.02, 'maximum': 0.2},
-            'trange': {},
-            'wma': {'period': 30},
-            'ema': {'period': 15},
-            'aroon': {'period': 14},
-            'atr': {'period': 14},
-            'ad': {},
-            'adx': {'period': 14},
-            'ichimoku': {'base_line_periods': 9, 'conversion_line_periods': 26, 'leading_span_b_periods': 52, 'leading_span_a_periods': 26},
-            'atr_trailing_stops': {'high': 10, 'low': 10, 'close': 10}, # This might need adjustment
-            'linear_regression': {},
-            'cmo': {'period': 14},
-            'dpo': {'period': 20},
-            'vol_oscillator': {'short_period': 5, 'long_period': 20},
-            'williams_ad': {},
-            'cci': {'timeperiod': 20},
-            'pvt': {},
-            'tmf': {'timeperiod': 21},
-            'donchian_channels': {'n': 20},
-            'keltner_channels': {'n': 20},
-            'atr_bands': {'n': 14},
-            'elder_ray_index': {'n': 14},
-            'hull_moving_average': {'n': 9},
-            'rainbow_moving_averages': {'periods': 14},
-            'chaikin_money_flow': {'n': 20},
-            'chaikin_oscillator': {'short_ema_length': 3, 'long_ema_length': 10},
-            'chaikin_volatility': {'n': 10},
-            'standard_deviation_channels': {'n': 20},
-            'wilder_moving_average': {'n': 14},
-            'twiggs_momentum_oscillator': {'n': 21},
-            'twiggs_trend_index': {'n': 21},
-            'atr_trailing_stops': {'high': 10, 'low': 10, 'close': 10, 'atr_period': 14, 'multiplier': 2},
-            'linear_regression': {'window': 14},
-            'coppock': {'short_roc_period': 11, 'long_roc_period': 14, 'wma_period': 10},
-            'kst': {'rc1': 10, 'rc2': 15, 'rc3': 20, 'rc4': 30, 'sma1': 10, 'sma2': 10, 'sma3': 10, 'sma4': 15},
-            'force_index': {'period': 13},
+            'sma': {'func': calculate_sma, 'params': {'period': range(10, 51)}},
+            'rsi': {'func': calculate_rsi, 'params': {'period': range(5, 31)}},
+            'bbands': {'func': calculate_bbands, 'params': {'period': range(10, 51)}},
+            'macd': {'func': calculate_macd, 'params': {'fastperiod': range(10, 26), 'slowperiod': range(27, 51), 'signalperiod': range(5, 10)}},
+            'psar': {'func': calculate_psar, 'params': {'acceleration': [x * 0.01 for x in range(2, 21)], 'maximum': [x * 0.01 for x in range(2, 21)]}},
+            'wma': {'func': calculate_wma, 'params': {'period': range(10, 51)}},
+            'ema': {'func': calculate_ema, 'params': {'period': range(10, 51)}},
+            'aroon': {'func': calculate_aroon, 'params': {'period': range(5, 31)}},
+            'atr': {'func': calculate_atr, 'params': {'period': range(5, 31)}},
+            'adx': {'func': calculate_adx, 'params': {'period': range(5, 31)}},
+            'cmo': {'func': calculate_cmo, 'params': {'period': range(5, 31)}},
+            'dpo': {'func': calculate_dpo, 'params': {'period': range(5, 31)}},
+            'vol_oscillator': {'func': calculate_vol_oscillator, 'params': {'short_period': range(3, 16), 'long_period': range(17, 31)}},
+            'cci': {'func': calculate_cci, 'params': {'timeperiod': range(10, 51)}},
+            'tmf': {'func': calculate_tmf, 'params': {'timeperiod': range(10, 31)}},
+            'donchian_channels': {'func': calculate_donchian_channels, 'params': {'n': range(10, 51)}},
+            'keltner_channels': {'func': calculate_keltner_channels, 'params': {'n': range(10, 51)}},
+            'atr_bands': {'func': calculate_atr_bands, 'params': {'n': range(10, 51)}},
+            'elder_ray_index': {'func': calculate_elder_ray_index, 'params': {'n': range(10, 51)}},
+            'hull_moving_average': {'func': calculate_hull_moving_average, 'params': {'n': range(5, 26)}},
+            'rainbow_moving_averages': {'func': calculate_rainbow_moving_averages, 'params': {'periods': range(5, 31)}},
+            'chaikin_money_flow': {'func': calculate_chaikin_money_flow, 'params': {'n': range(10, 51)}},
+            'chaikin_volatility': {'func': calculate_chaikin_volatility, 'params': {'n': range(10, 51)}},
+            'standard_deviation_channels': {'func': calculate_standard_deviation_channels, 'params': {'n': range(10, 51)}},
+            'wilder_moving_average': {'func': calculate_wilder_moving_average, 'params': {'n': range(5, 31)}},
+            'twiggs_momentum_oscillator': {'func': calculate_twiggs_momentum_oscillator, 'params': {'n': range(10, 51)}},
+            'twiggs_trend_index': {'func': calculate_twiggs_trend_index, 'params': {'n': range(10, 51)}},
+            'linear_regression': {'func': calculate_linear_regression, 'params': {'window': range(5, 31)}},
+            'coppock': {'func': calculate_coppock, 'params': {'short_roc_period': range(10, 21), 'long_roc_period': range(22, 31), 'wma_period': range(5, 16)}},
+            'kst': {'func': calculate_kst, 'params': {'rc1': range(5, 16), 'rc2': range(10, 21), 'rc3': range(15, 26), 'rc4': range(20, 31), 'sma1': range(5, 16), 'sma2': range(10, 21), 'sma3': range(15, 26), 'sma4': range(20, 31)}},
+            'force_index': {'func': calculate_force_index, 'params': {'period': range(5, 31)}},
+            # other indicators...
         }
         
         # Assign all indicators to chosen_indicators
-        self.chosen_indicators = self.all_indicators
+        self.chosen_indicators = {}
+        self.all_indicators = self.initialize_all_indicators()
         
         
+
         # Initialize params_values as a copy of all_indicators
         self.params_values = self.all_indicators.copy()
         
@@ -113,9 +65,8 @@ class TradingEnvironment:
         # Initialize account balances and transactions costs
         self.cash_balance = initial_cash_balance
         self.transaction_cost = transaction_cost
-        self.portfolio = defaultdict(float)
+        self.shares = []
             
-
         self.risk_adjusted_return_history = []
         self.portfolio_value_history = []
 
@@ -129,11 +80,21 @@ class TradingEnvironment:
         actions = ['buy', 'sell', 'hold']
 
         # Calculate max_action
-        # For each stock, there are 4 possible actions (Buy, Sell, Hold, Change Settings) and 10 possible percentages
-        max_action = len(self.data.columns) * len(actions) * len(percentages)
+        # For each stock, there are 3 possible actions (Buy, Sell, Hold) and 10 possible percentages
+        max_action = len(actions) * len(percentages)
+
+        # Additional actions for changing settings of each indicator
+        indicator_actions = 0
+        for indicator in self.INDICATORS.values():
+            params = indicator['params']
+            for param_values in params.values():
+                # Add the number of possible values for each parameter to the indicator_actions
+                indicator_actions += len(param_values)
+
+        # Adding indicator actions to the max action
+        max_action += indicator_actions
 
         return max_action
-
 
     def load_market_data(self, data_source):
         # Load the market data from the data source
@@ -149,25 +110,20 @@ class TradingEnvironment:
 
         # Go through each indicator
         for indicator_name, indicator_info in self.INDICATORS.items():
-            # Get the parameters defined in INDICATORS
-            indicator_params = indicator_info['params']
-            
+            # Get the parameters defined in all_indicators
+            default_params = self.all_indicators[indicator_name]
+
             # Go through each defined parameter
-            for param_name in indicator_params.keys():
-                if param_name in data_series.keys():
-                    # Assign the corresponding data series based on the parameter name
-                    indicator_info['params'][param_name] = data_series[param_name]
-                else:
-                    # Get the default parameter value from all_indicators
-                    default_param_value = self.all_indicators[indicator_name].get(param_name)
-                    if default_param_value is not None:
-                        indicator_info['params'][param_name] = default_param_value
+            for param_name, default_value in default_params.items():
+                indicator_info['params'][param_name] = default_value
 
         return market_data
 
     def initialize_state(self):
-        # Initialize the portfolio and cash balance
-        self.portfolio = {}  # Dict with structure: {"Stock Symbol": Number of shares held}
+        # Initialize the portfolio with 0 shares
+        self.num_shares = 0
+
+        # Initialize the cash balance
         self.cash_balance = self.initial_cash_balance
 
         # Initialize the market state
@@ -181,10 +137,10 @@ class TradingEnvironment:
 
         # Initialize previous action
         self.previous_action = None
-        
+
         # Initialize prices and counters
-        self.buy_prices = {}  # Structure: {'symbol': [price1, price2, ...]}
-        self.sell_prices = {}  # Structure: {'symbol': [price1, price2, ...]}
+        self.buy_price = 0  # Price at which the asset was last bought
+        self.sell_price = 0  # Price at which the asset was last sold
         self.winning_trades = 0
         self.total_trades = 0
 
@@ -194,8 +150,8 @@ class TradingEnvironment:
         return self.state
 
     def concatenate_state(self):
-        # Convert portfolio and cash_balance into a compatible format with market_state
-        portfolio_vector = self.portfolio_to_vector()
+        # Convert num_shares and cash_balance into a compatible format with market_state
+        num_shares_vector = np.array([self.num_shares])
         cash_balance_vector = np.array([self.cash_balance])
 
         # Convert performance metrics, chosen indicators, and previous action to a compatible format
@@ -204,23 +160,10 @@ class TradingEnvironment:
         action_vector = self.action_to_vector(self.previous_action)
 
         # Concatenate all components of the state
-        full_state = np.concatenate([portfolio_vector, cash_balance_vector, self.market_state.values, performance_vector, indicator_vector, action_vector])
+        full_state = np.concatenate([num_shares_vector, cash_balance_vector, self.market_state.values, performance_vector, indicator_vector, action_vector])
 
         return full_state
-    
-    def portfolio_to_vector(self):
-        # Convert portfolio dictionary to a vector (array), compatible with the rest of the state
-        # Assume that the stocks are ordered in the same order as in the market_data
-        portfolio_vector = []
 
-        for stock_symbol in self.market_data.columns:
-            if stock_symbol in self.portfolio:
-                portfolio_vector.append(self.portfolio[stock_symbol])
-            else:
-                portfolio_vector.append(0)
-
-        return np.array(portfolio_vector)
-    
     def metrics_to_vector(self, metrics):
         # Convert metrics dictionary to a vector (array), compatible with the rest of the state
         # This function simply extracts the values and forms a numpy array
@@ -228,11 +171,13 @@ class TradingEnvironment:
         return metrics_vector
     
     def action_to_vector(self, action):
-        # Assuming the action is represented as an integer index
+        # Assuming the action is represented as a string
         if action is None:
-            return 0  # Could be a special value representing "no action"
+            return np.array([0])  # Could be a special value representing "no action"
         else:
-            return action
+            # Convert the action into an index in the action space
+            action_index = self.action_space.index(action)
+            return np.array([action_index])
 
     def define_action_space(self):
         # Define a discrete action space
@@ -252,10 +197,10 @@ class TradingEnvironment:
         # Update performance metrics
         self.performance_metrics = self.update_metrics()
 
-        # Check if the action involved changing indicator settings
-        if 'change_indicator_settings' in action:
+       # Check if the action involved changing indicator settings
+        if action == 'change_indicator_settings':
             # Update technical indicator settings and recalculate market data with new settings
-            self.indicator_settings = self.update_indicator_settings(action['change_indicator_settings'])
+            self.indicator_settings = self.update_indicator_settings()
             self.market_data = self.recalculate_market_data()
         
         # Update previous action
@@ -280,7 +225,7 @@ class TradingEnvironment:
         # Reset the environment to the initial state
         self.state = self.initialize_state()
         self.current_step = 0
-        self.portfolio = {}
+        self.portfolio = 0
         self.cash_balance = self.initial_cash_balance
         self.buy_prices = {}
         self.sell_prices = {}
@@ -289,82 +234,80 @@ class TradingEnvironment:
         return self.state
 
     def calculate_reward(self):
-        # Compute the return
-        ret = (self.current_portfolio_value - self.previous_portfolio_value) / self.previous_portfolio_value
+            # Compute the return
+            ret = (self.current_portfolio_value - self.previous_portfolio_value) / self.previous_portfolio_value
 
-        # Compute a measure of risk
-        risk = np.std(self.portfolio_value_history)
+            # Compute a measure of risk
+            risk = np.std(self.portfolio_value_history)
 
-        # Compute the risk-adjusted return
-        risk_adjusted_return = ret / risk
+            # Add a small constant to the risk to prevent division by zero
+            EPSILON = 1e-8
+            risk += EPSILON
 
-        # Compute a penalty for trading
-        trade_penalty = self.transaction_cost * (self.current_portfolio_value != self.previous_portfolio_value)
+            # Compute the risk-adjusted return
+            risk_adjusted_return = ret / risk
 
-        # Compute an improvement bonus
-        improvement_bonus = 0.0
-        lookback_period = 10  # Define the period over which improvement is measured
-        if self.current_step > lookback_period:
-            old_risk_adjusted_return = self.risk_adjusted_return_history[-lookback_period]
-            old_portfolio_value = self.portfolio_value_history[-lookback_period]
-            if risk_adjusted_return > old_risk_adjusted_return and self.current_portfolio_value > old_portfolio_value:
-                improvement_bonus = 0.1  # This value could be adjusted as per requirements
+            # Compute a penalty for trading
+            trade_penalty = self.transaction_cost * (self.current_portfolio_value != self.previous_portfolio_value)
 
-        # The reward is the risk-adjusted return minus the trade penalty plus the improvement bonus
-        reward = risk_adjusted_return - trade_penalty + improvement_bonus
+            # Compute an improvement bonus
+            improvement_bonus = 0.0
+            lookback_period = 10  # Define the period over which improvement is measured
+            if self.current_step > lookback_period:
+                old_risk_adjusted_return = self.risk_adjusted_return_history[-lookback_period]
+                old_portfolio_value = self.portfolio_value_history[-lookback_period]
+                if risk_adjusted_return > old_risk_adjusted_return and self.current_portfolio_value > old_portfolio_value:
+                    improvement_bonus = 0.1  # This value could be adjusted as per requirements
 
-        # Store current risk-adjusted return and portfolio value for future comparisons
-        self.risk_adjusted_return_history.append(risk_adjusted_return)
-        self.portfolio_value_history.append(self.current_portfolio_value)
+            # The reward is the risk-adjusted return minus the trade penalty plus the improvement bonus
+            reward = risk_adjusted_return - trade_penalty + improvement_bonus
 
-        return reward
+            # Store current risk-adjusted return and portfolio value for future comparisons
+            self.risk_adjusted_return_history.append(risk_adjusted_return)
+            self.portfolio_value_history.append(self.current_portfolio_value)
+
+            return reward
     
     def update_portfolio_and_balance(self, action):
-        # Check the validity of the action
-        if not self.is_valid_action(action):
-            return
+            # Check the validity of the action
+            if not self.is_valid_action(action):
+                return
 
-        symbol, action_type, amount = action['symbol'], action['type'], action['amount']
-        current_price = self.market_state[symbol]
+            action_type, amount = action['type'], action['amount']
+            current_price = self.market_state[self.symbol]
 
-        if action_type == 'buy':
-            cost = current_price * amount
+            if action_type == 'buy':
+                cost = current_price * amount
 
-            # If sufficient balance is available, update portfolio and balance
-            if self.cash_balance >= cost:
-                if symbol not in self.portfolio:
-                    self.portfolio[symbol] = 0
-                self.portfolio[symbol] += amount
-                self.cash_balance -= cost
+                # If sufficient balance is available, update portfolio and balance
+                if self.cash_balance >= cost:
+                    self.portfolio[self.symbol] += amount
+                    self.cash_balance -= cost
 
-                # Store buy price
-                if symbol not in self.buy_prices:
-                    self.buy_prices[symbol] = []
-                self.buy_prices[symbol].append(current_price)
+                    # Store buy price
+                    self.buy_prices[self.symbol].append(current_price)
 
-        elif action_type == 'sell':
-            # If sufficient stocks are available in the portfolio, update portfolio and balance
-            if symbol in self.portfolio and self.portfolio[symbol] >= amount:
-                self.portfolio[symbol] -= amount
-                if self.portfolio[symbol] == 0:
-                    del self.portfolio[symbol]
-                self.cash_balance += current_price * amount
+            elif action_type == 'sell':
+                # If sufficient stocks are available in the portfolio, update portfolio and balance
+                if self.portfolio[self.symbol] >= amount:
+                    self.portfolio[self.symbol] -= amount
+                    if self.portfolio[self.symbol] == 0:
+                        del self.portfolio[self.symbol]
+                    self.cash_balance += current_price * amount
 
-                # Store sell price and count winning trades
-                if symbol not in self.sell_prices:
-                    self.sell_prices[symbol] = []
-                self.sell_prices[symbol].append(current_price)
-                if self.sell_prices[symbol][-1] > self.buy_prices[symbol][0]:  # FIFO strategy
-                    self.winning_trades += 1
-                del self.buy_prices[symbol][0]  # Remove the corresponding buy price
+                    # Store sell price and count winning trades
+                    self.sell_prices[self.symbol].append(current_price)
+                    if self.sell_prices[self.symbol][-1] > self.buy_prices[self.symbol][0]:  # FIFO strategy
+                        self.winning_trades += 1
+                    del self.buy_prices[self.symbol][0]  # Remove the corresponding buy price
 
-        # Increment total trades counter
-        self.total_trades += 1
+            # Increment total trades counter
+            self.total_trades += 1
 
-        self.update_market_state()  # Update the market state after taking the action
+            self.update_market_state()  # Update the market state after taking the action
 
     def calculate_initial_metrics(self):
-        # Calculate initial metrics
+    # Calculate initial metrics
         self.performance_metrics = {
             'Portfolio Value': self.calculate_portfolio_value(),
             'Running Average Value': self.calculate_portfolio_value(),  # Add this new metric
@@ -386,15 +329,11 @@ class TradingEnvironment:
         # Check that action is a dictionary containing the necessary keys
         if not isinstance(action, dict):
             return False
-        if not {'symbol', 'type', 'amount'}.issubset(action.keys()):
+        if not {'type', 'amount'}.issubset(action.keys()):
             return False
         
         # Check that action type is in the action space
         if action['type'] not in self.action_space:
-            return False
-
-        # Check that the action symbol is in the current market state (i.e., it's a tradable asset)
-        if action['symbol'] not in self.market_state.keys():
             return False
 
         # Check that the action amount is a non-negative number
@@ -408,16 +347,12 @@ class TradingEnvironment:
         self.market_data = self.original_market_data.copy()
 
         # Recalculate each indicator in the chosen indicators with the updated settings
-        for indicator_name, settings in self.indicator_settings.items():
-            # Get the function and parameter names for this indicator
-            func = INDICATORS.get(indicator_name)['func']
-            param_names = INDICATORS.get(indicator_name)['params']
-
-            # Create a dictionary of parameter values from the updated indicator settings
-            func_params = {name: settings[name] for name in param_names}
+        for indicator_name, settings in self.chosen_indicators.items():
+            # Get the function for this indicator
+            indicator_func = self.INDICATORS[indicator_name]['func']
 
             # Calculate the indicator and update the market data
-            self.market_data = func(self.market_data, **func_params)
+            self.market_data[indicator_name] = indicator_func(self.market_data, **settings)
 
         return self.market_data
     
@@ -429,17 +364,17 @@ class TradingEnvironment:
             'Portfolio Value': current_portfolio_value,
             'Running Average Value': running_average_value,
             'Drawdown': self.calculate_drawdown(current_portfolio_value),
-            'Winning Trades': self.calculate_winning_trades(),  # This needs more implementation details
-            'Total Trades': self.calculate_total_trades()  # This needs more implementation details
+            'Winning Trades': self.calculate_winning_trades(), 
+            'Total Trades': self.calculate_total_trades()  
         }
 
     def calculate_portfolio_value(self):
-        return sum(self.market_state[symbol] * amount for symbol, amount in self.portfolio.items())
+        # Assuming 'asset' is the name of the single asset
+        return self.market_state['asset'] * self.portfolio['asset'] if 'asset' in self.portfolio else 0
 
-    def calculate_drawdown(self):
+    def calculate_drawdown(self, current_value):
         if not hasattr(self, 'historical_peaks'):
-            self.historical_peaks = self.calculate_portfolio_value()
-        current_value = self.calculate_portfolio_value()
+            self.historical_peaks = current_value
         self.historical_peaks = max(self.historical_peaks, current_value)
         drawdown = (self.historical_peaks - current_value) / self.historical_peaks
         return drawdown
@@ -450,17 +385,18 @@ class TradingEnvironment:
     def calculate_total_trades(self):
         return self.total_trades
 
-    def update_indicator_settings(self, indicator_name, settings):
-        if indicator_name in self.all_indicators and len(self.all_indicators[indicator_name]) > 0:
-            # the indicator is present in the all_indicators dictionary and it has adjustable parameters
-            self.chosen_indicators[indicator_name] = settings
-        elif indicator_name in INDICATORS:
-            # the indicator is present in the INDICATORS dictionary but it has no adjustable parameters
-            # so we just select the indicator without updating any settings
-            self.chosen_indicators[indicator_name] = {}
-        else:
-            # the indicator is not recognized
-            raise ValueError(f"Unknown indicator: {indicator_name}")
+    def update_indicator_settings(self, settings_dict):
+        for indicator_name, settings in settings_dict.items():
+            if indicator_name in self.all_indicators and len(self.all_indicators[indicator_name]) > 0:
+                # the indicator is present in the all_indicators dictionary and it has adjustable parameters
+                self.chosen_indicators[indicator_name] = settings
+            elif indicator_name in INDICATORS:
+                # the indicator is present in the INDICATORS dictionary but it has no adjustable parameters
+                # so we just select the indicator without updating any settings
+                self.chosen_indicators[indicator_name] = {}
+            else:
+                # the indicator is not recognized
+                raise ValueError(f"Unknown indicator: {indicator_name}")
                     
     def indicator_settings_to_vector(self, settings):
         # Convert indicator settings to a vector (array)
@@ -469,20 +405,20 @@ class TradingEnvironment:
         return settings_vector
 
     def calculate_indicators(self):
-        """Calculate the value for all indicators."""
+        """Calculate the value for all chosen indicators."""
 
         # Ensure market data is loaded
         if self.indicator_data is None:
             raise Exception("Market data must be loaded before calculating indicators")
 
-        # Iterate over all indicators
-        for indicator_name, indicator_info in self.INDICATORS.items():
+        # Iterate over all chosen indicators
+        for indicator_name, settings in self.chosen_indicators.items():
             # Get the function to calculate the indicator
-            indicator_func = indicator_info['func']
+            indicator_func = self.INDICATORS[indicator_name]['func']
 
             # Iterate over all parameters for this indicator
             params = {}
-            for param_name in indicator_info['params'].keys():
+            for param_name, param_value in settings.items():
                 # Calculate the value for this parameter
                 param_value = self.calculate_parameter_value(indicator_name, param_name)
 
@@ -495,21 +431,36 @@ class TradingEnvironment:
             # Store the calculated indicator value
             self.indicator_values[indicator_name] = indicator_value
 
-                    
     def calculate_parameter_value(self, indicator_name, param_name):
-        """Calculate the value for a specific parameter of a specific indicator."""
+            """Calculate the value for a specific parameter of a specific indicator."""
 
-        # Check if this parameter has a value set in params_values
-        if self.params_values and indicator_name in self.params_values and param_name in self.params_values[indicator_name]:
-            return self.params_values[indicator_name][param_name]
+            # Check if this parameter has a value set in params_values
+            if self.params_values and indicator_name in self.params_values and param_name in self.params_values[indicator_name]:
+                return self.params_values[indicator_name][param_name]
 
-        # If not, use the default value from all_indicators
-        if indicator_name in self.all_indicators and param_name in self.all_indicators[indicator_name]:
-            return self.all_indicators[indicator_name][param_name]
+            # If not, use the default value from chosen_indicators
+            if indicator_name in self.chosen_indicators and param_name in self.chosen_indicators[indicator_name]:
+                return self.chosen_indicators[indicator_name][param_name]
 
-        # If there is no default value, raise an exception
-        raise Exception(f"Cannot calculate value for parameter '{param_name}' of indicator '{indicator_name}'")
-                
+            # If there is no default value, raise an exception
+            raise ValueError(f"No value found for parameter '{param_name}' of indicator '{indicator_name}'. "
+                            f"Please provide a default value in chosen_indicators or specify a value in params_values.")      
+               
+    def select_indicators(self, chosen_indicators):
+        """
+        Method for the agent to select which indicators to use. This can be
+        called as part of the agent's initialization, or as an action the agent
+        can take.
+        """
+        # Validate the chosen indicators
+        for indicator_name in chosen_indicators:
+            if indicator_name not in self.all_indicators:
+                raise ValueError(f"Unknown indicator: {indicator_name}")
+        
+        # Use the `update_indicator_settings` method to initialize settings for
+        # the chosen indicators
+        self.chosen_indicators = self.update_indicator_settings(chosen_indicators)
+        
     def run_episode(self):
         self.env.reset()  # reset the environment to its initial state at the start of an episode
         done = False  # flag to track if the episode has ended

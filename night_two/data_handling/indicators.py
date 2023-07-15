@@ -73,18 +73,6 @@ def calculate_ichimoku(data):
 
     return data
 
-def calculate_atr_trailing_stops(high: pd.Series, low: pd.Series, close: pd.Series, atr_period: int = 14) -> pd.Series:
-    atr = talib.ATR(high, low, close, timeperiod=atr_period)
-    stop = close.copy()
-    
-    for i in range(atr_period, len(close)):
-        if close[i] > stop[i-1]:
-            stop[i] = max(stop[i-1], close[i] - atr[i])
-        else:
-            stop[i] = min(stop[i-1], close[i] + atr[i])
-
-    return stop
-
 def calculate_linear_regression(data: pd.DataFrame, window: int = 14) -> pd.DataFrame:
     data['original_index'] = data.index
     data.reset_index(drop=True, inplace=True)
@@ -99,7 +87,7 @@ def calculate_cmo(data: pd.DataFrame, period: int) -> pd.Series:
     return ta.CMO(data['Close'], timeperiod=period)
 
 def calculate_dpo(data: pd.Series, period: int):
-    dpo = data.shift(int((0.5 * period) + 1)) - data.rolling(period).mean()
+    dpo = data['Close'].shift(int((0.5 * period) + 1)) - data['Close'].rolling(period).mean()
     return dpo
 
 def calculate_minus_di(data: pd.DataFrame, period: int) -> pd.Series:
@@ -335,22 +323,11 @@ def calculate_hull_moving_average(data, n=9):
 
     return data
 
-def calculate_rainbow_moving_averages(data, periods=[5, 10, 15, 20, 30, 40, 50, 100]):
-    """
-    Calculates Rainbow 3D Moving Averages.
-
-    Args:
-    data (pandas.DataFrame): The market data.
-    periods (list of int): The periods for calculating the moving averages.
-
-    Returns:
-    pandas.DataFrame: The market data with additional columns for the Rainbow 3D Moving Averages.
-    """
-    for i in periods:
-        data[f'SMA_{i}'] = data['Close'].rolling(window=i).mean()
-
+def calculate_rainbow_moving_averages(data: pd.DataFrame, periods: int) -> pd.DataFrame:
+    data['rainbow_ma'] = data['Close'].rolling(window=periods).mean()
     return data
-    
+
+
 def calculate_chaikin_money_flow(data, n=20):
     """
     Calculates the Chaikin Money Flow.
@@ -369,6 +346,13 @@ def calculate_chaikin_money_flow(data, n=20):
     data['CMF'] = cmf
 
     return data
+
+
+def calculate_adl(data: pd.DataFrame) -> pd.Series:
+    clv = ((data['Close'] - data['Low']) - (data['High'] - data['Close'])) / (data['High'] - data['Low'])
+    clv = clv.fillna(0)  # Replace inf and -inf with 0. This situation occurs when (High - Low) is zero
+    adl = (clv * data['Volume']).cumsum()
+    return adl
 
 def calculate_chaikin_oscillator(data):
     """
@@ -473,31 +457,6 @@ def calculate_twiggs_trend_index(data, n=21):
     data['TTI'] = (data['Close'] - data['Close_EMA']) / data['Close_EMA']
 
     return data
- 
-def calculate_atr_trailing_stops(high, low, close, atr_period=14, multiplier=3):
-    """
-    Calculate Average True Range (ATR) Trailing Stops.
-
-    Args:
-        high (pandas.Series): Series of 'high' prices
-        low (pandas.Series): Series of 'low' prices
-        close (pandas.Series): Series of 'close' prices
-        atr_period (int): The period to consider for the ATR calculation
-        multiplier (int): The multiplier to use for the ATR Stops
-
-    Returns:
-        pandas.Series: The ATR Trailing Stops values
-    """
-    atr = ta.ATR(high, low, close, timeperiod=atr_period)
-    atr_trailing_stop = pd.Series(index=close.index)
-
-    for i in range(len(close)):
-        if close[i] > atr_trailing_stop[i - 1]:
-            atr_trailing_stop[i] = max(atr_trailing_stop[i - 1], close[i] - multiplier * atr[i])
-        else:
-            atr_trailing_stop[i] = min(atr_trailing_stop[i - 1], close[i] + multiplier * atr[i])
-
-    return atr_trailing_stop
 
 def calculate_coppock(data, short_roc_period=11, long_roc_period=14, wma_period=10):
     """
