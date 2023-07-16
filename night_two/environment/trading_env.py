@@ -73,14 +73,14 @@ class TradingEnvironment:
         self.max_action = self.calculate_max_action()
 
     def calculate_max_action(self):
-        # Define the possible percentages
-        percentages = [i for i in range(0, 101, 10)]
+        # Define the possible percentages for shares to buy or sell
+        percentages = [i for i in range(1, 101)]  # range from 1 to 100
 
         # Define the action space
         actions = ['buy', 'sell', 'hold']
 
         # Calculate max_action
-        # For each stock, there are 3 possible actions (Buy, Sell, Hold) and 10 possible percentages
+        # For each stock, there are 3 possible actions (Buy, Sell, Hold) and 100 possible percentages
         max_action = len(actions) * len(percentages)
 
         # Additional actions for changing settings of each indicator
@@ -179,27 +179,34 @@ class TradingEnvironment:
         # Copy the current portfolio value
         self.previous_portfolio_value = self.current_portfolio_value
         
-        # Update portfolio and cash balance based on the action
-        self.update_portfolio_and_balance(action)
-
-        # Update the current portfolio value
-        self.current_portfolio_value = self.calculate_portfolio_value()
-
-        # Update performance metrics
-        self.performance_metrics = self.update_metrics()
-
-       # Check if the action involved changing indicator settings
-        if action == 'change_indicator_settings':
-            # Update technical indicator settings and recalculate market data with new settings
-            self.chosen_indicators = self.update_indicator_settings()
+        # Check if the action involved changing indicator settings
+        if action['type'] == 'change_indicator_settings':
+            # Update technical indicator settings and recalculate market data with new settings.
+            self.chosen_indicators = self.update_indicator_settings(action['settings'])
             self.market_data = self.recalculate_market_data()
         
+        elif action['type'] == 'buy':
+            self.buy_asset(action['percentage'])
+
+        elif action['type'] == 'sell':
+            self.sell_asset(action['percentage'])
+        
+        elif action['type'] == 'hold':
+            # Nothing to do for hold
+            pass
+
         # Update previous action
         self.previous_action = action
 
         # Get the new market state for the next time step
         self.current_step += 1
         self.market_state = self.market_data.iloc[self.current_step]
+
+        # Update the current portfolio value
+        self.current_portfolio_value = self.calculate_portfolio_value()
+
+        # Update performance metrics
+        self.performance_metrics = self.update_metrics()
 
         # Update full state
         self.state = self.concatenate_state()
@@ -258,41 +265,6 @@ class TradingEnvironment:
             self.portfolio_value_history.append(self.current_portfolio_value)
 
             return reward
-    
-    def update_portfolio_and_balance(self, action):
-            # Check the validity of the action
-            if not self.is_valid_action(action):
-                return
-
-            action_type, amount = action['type'], action['amount']
-            current_price = self.market_state[self.symbol]
-
-            if action_type == 'buy':
-                cost = current_price * amount
-
-                # If sufficient balance is available, update portfolio and balance
-                if self.cash_balance >= cost:
-                    self.num_shares += amount
-                    self.cash_balance -= cost
-
-                    # Store buy price
-                    self.buy_price = current_price
-
-            elif action_type == 'sell':
-                # If sufficient stocks are available in the portfolio, update portfolio and balance
-                if self.num_shares >= amount:
-                    self.num_shares -= amount
-                    self.cash_balance += current_price * amount
-
-                    # Store sell price and count winning trades
-                    self.sell_price = current_price
-                    if self.sell_price > self.buy_price:  # FIFO strategy
-                        self.winning_trades += 1
-
-            # Increment total trades counter
-            self.total_trades += 1
-
-            self.update_market_state()  # Update the market state after taking the action
 
     def calculate_initial_metrics(self):
         # Calculate initial metrics
@@ -350,9 +322,6 @@ class TradingEnvironment:
         drawdown = (self.historical_peaks - current_value) / self.historical_peaks
         return drawdown
 
-    def calculate_winning_trades(self):
-        return self.winning_trades
-
     def calculate_total_trades(self):
         return self.total_trades
 
@@ -397,8 +366,7 @@ class TradingEnvironment:
             indicator_value = indicator_func(self.indicator_data, **params)
 
             # Store the calculated indicator value
-            self.indicator_values[indicator_name] = indicator_value
-  
+            self.indicator_values[indicator_name] = indicator_value 
                
     def select_indicators(self, chosen_indicators):
         """
@@ -434,3 +402,42 @@ class TradingEnvironment:
 
         return total_reward  # return the total reward from the episode
     
+    def buy_asset(self, percentage):
+        # Calculate the total cost based on the percentage of current cash balance
+        cost = self.cash_balance * (percentage / 100)
+
+        # Calculate the number of shares that can be bought with this amount of cash
+        amount = cost / self.market_state['close']
+
+        # If the cost is less than or equal to the current cash balance
+        if cost <= self.cash_balance:
+            # Subtract the cost from the cash balance
+            self.cash_balance -= cost
+
+            # Add the purchased shares to the portfolio
+            self.num_shares += amount
+
+            # Update the total trades counter
+            self.total_trades += 1
+
+    def sell_asset(self, percentage):
+        # Calculate the number of shares to sell based on the percentage of current number of shares
+        amount = self.num_shares * (percentage / 100)
+
+        # If the amount of shares to sell is less than or equal to the number of shares in the portfolio
+        if amount <= self.num_shares:
+            # Calculate the proceeds from selling 'amount' shares
+            proceeds = self.market_state['close'] * amount
+
+            # Add the proceeds to the cash balance
+            self.cash_balance += proceeds
+
+            # Subtract the sold shares from the portfolio
+            self.num_shares -= amount
+
+            # If the selling price is greater than the buying price, increment the winning trades counter
+            if self.market_state['close'] > self.buy_price:  
+                self.winning_trades += 1
+
+            # Update the total trades counter
+            self.total_trades += 1
