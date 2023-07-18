@@ -1,4 +1,6 @@
+import copy
 import numpy as np
+import random
 import pandas as pd
 from collections import defaultdict
 from night_two.data_handling.data_preprocessing import preprocess_data
@@ -42,25 +44,26 @@ class TradingEnvironment:
             'force_index': {'func': calculate_force_index, 'params': {'period': range(5, 31)}},
             # other indicators...
         }
+        # Define the action space
+        self.action_space = ['Buy', 'Sell', 'Hold', 'change_indicator_settings', "select_indicators"]
         
-        # Assign all indicators to chosen_indicators
-        self.chosen_indicators = {}
-        self.all_indicators = self.initialize_all_indicators()
-        
-        
-
-        # Initialize params_values as a copy of all_indicators
-        self.params_values = self.all_indicators.copy()
-        
-        # Initialize the indicators
-        self.indicator_values = {name: None for name in self.all_indicators.keys()}
-
         # Initialize the data
         self.data = self.load_market_data(data_source)
         self.indicator_data = self.data
         self.original_market_data = self.data.copy()  # store the original data
         self.current_step = 0
         self.initial_cash_balance = initial_cash_balance
+        
+        # Assign all indicators to chosen_indicators
+        self.chosen_indicators = {}
+        
+        # Initialize params_values as a copy of INDICATORS
+        self.params_values = copy.deepcopy(self.INDICATORS)
+
+        
+         # Initialize the indicators
+        self.indicator_values = {name: None for name in self.INDICATORS.keys()}
+
 
         # Initialize account balances and transactions costs
         self.cash_balance = initial_cash_balance
@@ -160,21 +163,7 @@ class TradingEnvironment:
         # This function simply extracts the values and forms a numpy array
         metrics_vector = np.array(list(metrics.values()))
         return metrics_vector
-    
-    def action_to_vector(self, action):
-        # Assuming the action is represented as a string
-        if action is None:
-            return np.array([0])  # Could be a special value representing "no action"
-        else:
-            # Convert the action into an index in the action space
-            action_index = self.action_space.index(action)
-            return np.array([action_index])
         
-    def define_action_space(self):
-        # Define a discrete action space
-        self.action_space = ['Buy', 'Sell', 'Hold', 'Change Settings']
-        return self.action_space
-
     def step(self, action):
         # Copy the current portfolio value
         self.previous_portfolio_value = self.current_portfolio_value
@@ -185,6 +174,11 @@ class TradingEnvironment:
             self.chosen_indicators = self.update_indicator_settings(action['settings'])
             self.market_data = self.recalculate_market_data()
         
+        elif action["type"] == "select_indicators":
+            self.select_indicators(action['indicators'])
+            # You might also need to recalculate market data with the newly selected indicators
+            self.market_data = self.recalculate_market_data()
+
         elif action['type'] == 'buy':
             self.buy_asset(action['percentage'])
 
@@ -215,7 +209,7 @@ class TradingEnvironment:
         reward = self.calculate_reward()
 
         # Check if the episode has ended
-        done = self.current_step >= len(self.market_data) or self.cash_balance <= 0
+        done = self.current_step >= len(self.market_data) - 1 or self.cash_balance <= 0
 
         return self.state, reward, done
 
@@ -276,15 +270,6 @@ class TradingEnvironment:
             'Total Trades': 0  # No trades at the start
         }
 
-    def update_market_state(self):
-        if self.current_step < len(self.market_data) - 1:
-            # If we haven't stepped past the latest available data, advance to the next time step
-            self.current_step += 1
-            # Else, we maintain the current_step to be the last index of the market_data
-
-        # Update market_state to reflect the data at the current step
-        self.market_state = self.market_data.iloc[self.current_step]
-
     def recalculate_market_data(self):
         # Reset the market data to the original data
         self.market_data = self.original_market_data.copy()
@@ -322,21 +307,28 @@ class TradingEnvironment:
         drawdown = (self.historical_peaks - current_value) / self.historical_peaks
         return drawdown
 
-    def calculate_total_trades(self):
-        return self.total_trades
-
-    def update_indicator_settings(self, settings_dict):
-        for indicator_name, settings in settings_dict.items():
-            if indicator_name in self.all_indicators and len(self.all_indicators[indicator_name]) > 0:
-                # the indicator is present in the all_indicators dictionary and it has adjustable parameters
-                self.chosen_indicators[indicator_name] = settings
-            elif indicator_name in INDICATORS:
-                # the indicator is present in the INDICATORS dictionary but it has no adjustable parameters
-                # so we just select the indicator without updating any settings
+    def update_indicator_settings(self, new_settings):
+        for indicator_name, settings in new_settings.items():
+            if indicator_name in self.chosen_indicators:
+                # the indicator is present in the chosen_indicators dictionary and it has adjustable parameters
+                for param, value in settings.items():
+                    if param in self.all_indicators[indicator_name] and value in self.all_indicators[indicator_name][param]:
+                        self.chosen_indicators[indicator_name][param] = value
+                    else:
+                        raise ValueError(f"Invalid setting: {param} = {value} for indicator: {indicator_name}")
+            elif indicator_name in self.all_indicators:
+                # the indicator is recognized but not currently selected
                 self.chosen_indicators[indicator_name] = {}
+                for param, value in settings.items():
+                    if param in self.all_indicators[indicator_name] and value in self.all_indicators[indicator_name][param]:
+                        self.chosen_indicators[indicator_name][param] = value
+                    else:
+                        raise ValueError(f"Invalid setting: {param} = {value} for indicator: {indicator_name}")
             else:
                 # the indicator is not recognized
                 raise ValueError(f"Unknown indicator: {indicator_name}")
+        # recalculate indicator values with the updated settings
+        self.calculate_indicators()
                     
     def indicator_settings_to_vector(self, settings):
         # Convert indicator settings to a vector (array)
@@ -346,13 +338,16 @@ class TradingEnvironment:
 
     def calculate_indicators(self, params_values=None):
         """Calculate the value for all chosen indicators."""
-
         # Ensure market data is loaded
         if self.indicator_data is None:
             raise Exception("Market data must be loaded before calculating indicators")
-
+        
         # If no new parameter values provided, use existing ones
         params_values = params_values if params_values is not None else self.params_values
+
+        # Initialize actual_params_values if it doesn't exist
+        if not hasattr(self, 'actual_params_values'):
+            self.actual_params_values = copy.deepcopy(params_values)  # initial copy of params_values
 
         # Iterate over all chosen indicators
         for indicator_name, settings in self.chosen_indicators.items():
@@ -360,14 +355,30 @@ class TradingEnvironment:
             indicator_func = self.INDICATORS[indicator_name]['func']
 
             # Get parameters for this indicator from provided values
-            params = params_values.get(indicator_name, {})
+            params = params_values.get(indicator_name, {}).get('params', {})
+
+            # Check if parameter value is a range and if so, select a random integer from it
+            for param, value in params.items():
+                if isinstance(value, range):
+                    # Select a random value from the range and store it
+                    if param not in self.actual_params_values.get(indicator_name, {}):
+                        self.actual_params_values[indicator_name][param] = random.choice(value)
+                    params[param] = self.actual_params_values[indicator_name][param]  # use the actual stored value
+
+            # Print params for debugging
+            print(f"For indicator '{indicator_name}', parameters are: {params}")
 
             # Calculate the indicator value with the determined parameters
-            indicator_value = indicator_func(self.indicator_data, **params)
+            try:
+                indicator_value = indicator_func(self.indicator_data, **params)
+            except Exception as e:
+                print(f"Error calculating indicator {indicator_name} with params {params}")
+                print(f"Exception: {e}")
+                continue
 
             # Store the calculated indicator value
-            self.indicator_values[indicator_name] = indicator_value 
-               
+            self.indicator_values[indicator_name] = indicator_value
+                
     def select_indicators(self, chosen_indicators):
         """
         Method for the agent to select which indicators to use. This can be
@@ -378,11 +389,15 @@ class TradingEnvironment:
         for indicator_name in chosen_indicators:
             if indicator_name not in self.all_indicators:
                 raise ValueError(f"Unknown indicator: {indicator_name}")
-        
-        # Use the `update_indicator_settings` method to initialize settings for
-        # the chosen indicators
-        self.chosen_indicators = self.update_indicator_settings(chosen_indicators)
-        
+
+        # For each chosen indicator, select a random initial parameter value from
+        # the corresponding parameter range and add it to the chosen_indicators dict
+        for indicator_name in chosen_indicators:
+            param_range = self.all_indicators[indicator_name]
+            # Ensure the initial value is an integer within the parameter range
+            initial_value = random.randint(param_range.start, param_range.stop - 1)
+            self.chosen_indicators[indicator_name] = {'period': initial_value}
+            
     def run_episode(self):
         self.env.reset()  # reset the environment to its initial state at the start of an episode
         done = False  # flag to track if the episode has ended
