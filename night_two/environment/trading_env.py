@@ -45,18 +45,39 @@ class TradingEnvironment:
             # other indicators...
         }
         # Define the action space
-        self.action_space = ['Buy', 'Sell', 'Hold', 'change_indicator_settings', "select_indicators"]
+        self.action_space = ['buy', 'sell', 'hold', 'change_indicator_settings', "select_indicators"]
         
-        # Initialize the data
-        self.data = self.load_market_data(data_source)
-        self.indicator_data = self.data
-        self.original_market_data = self.data.copy()  # store the original data
-        self.current_step = 0
-        self.initial_cash_balance = initial_cash_balance
+        # Initialize the current portfolio value
+        self.current_portfolio_value = 0
+        
+        # Initialize the previous portfolio value
+        self.previous_portfolio_value = 0
+        
+        
+        self.historical_peaks = 0
         
         # Assign all indicators to chosen_indicators
         self.chosen_indicators = {}
         
+        # Initialize account balances and transactions costs and total trades.
+        self.cash_balance = initial_cash_balance
+        self.transaction_cost = transaction_cost
+        self.num_shares = 0
+        self.total_trades = 0
+            
+        self.risk_adjusted_return_history = []
+        self.portfolio_value_history = []
+        
+        
+        # Initialize the data
+        self.data = self.load_market_data(data_source)
+        self.original_market_data = self.data.copy()  # store the original data
+        self.market_data = self.recalculate_market_data()
+        self.indicator_data = self.data
+        self.current_step = 0
+        self.initial_cash_balance = initial_cash_balance
+        
+    
         # Initialize params_values as a copy of INDICATORS
         self.params_values = copy.deepcopy(self.INDICATORS)
 
@@ -64,14 +85,8 @@ class TradingEnvironment:
          # Initialize the indicators
         self.indicator_values = {name: None for name in self.INDICATORS.keys()}
 
-
-        # Initialize account balances and transactions costs
-        self.cash_balance = initial_cash_balance
-        self.transaction_cost = transaction_cost
-        self.shares = []
-            
-        self.risk_adjusted_return_history = []
-        self.portfolio_value_history = []
+        # Initialize state
+        self.initialize_state()
 
         self.max_action = self.calculate_max_action()
 
@@ -121,16 +136,15 @@ class TradingEnvironment:
         self.cash_balance = self.initial_cash_balance
 
         # Initialize the market state
-        self.market_state = self.market_data.iloc[0]
+        self.market_state = self.data.iloc[0]
 
         # Initialize performance metrics
+        print(f'market_state: {self.market_state}')
+        print(f'num_shares: {self.num_shares}')
         self.performance_metrics = self.calculate_initial_metrics()
 
         # Initialize chosen indicators as empty dictionary
         self.chosen_indicators = {}
-
-        # Initialize previous action
-        self.previous_action = None
 
         # Initialize prices and counters
         self.buy_price = 0  # Price at which the asset was last bought
@@ -148,34 +162,49 @@ class TradingEnvironment:
         num_shares_vector = np.array([self.num_shares])
         cash_balance_vector = np.array([self.cash_balance])
 
-        # Convert performance metrics, chosen indicators, and previous action to a compatible format
+        # Convert performance metrics, chosen indicators to a compatible format
         performance_vector = self.metrics_to_vector(self.performance_metrics)
         indicator_vector = self.indicator_settings_to_vector(self.chosen_indicators)
-        action_vector = self.action_to_vector(self.previous_action)
+
+        # Ensure all components have 1 dimension
+        if np.ndim(performance_vector) == 0:
+            performance_vector = np.array([performance_vector])
+        if np.ndim(indicator_vector) == 0:
+            indicator_vector = np.array([indicator_vector])
 
         # Concatenate all components of the state
-        full_state = np.concatenate([num_shares_vector, cash_balance_vector, self.market_state.values, performance_vector, indicator_vector, action_vector])
+        full_state = np.concatenate([num_shares_vector, cash_balance_vector, self.market_state.values, performance_vector, indicator_vector])
 
         return full_state
 
     def metrics_to_vector(self, metrics):
         # Convert metrics dictionary to a vector (array), compatible with the rest of the state
         # This function simply extracts the values and forms a numpy array
-        metrics_vector = np.array(list(metrics.values()))
+        metrics_vector = []
+        for key, value in metrics.items():
+            metrics_vector.append(value)
         return metrics_vector
         
     def step(self, action):
-        # Copy the current portfolio value
+        # Update the current portfolio value
+        self.current_portfolio_value = self.calculate_portfolio_value()
+
+        # Calculate the reward
+        reward = self.calculate_reward()
+
+        # Store the current portfolio value into previous_portfolio_value
         self.previous_portfolio_value = self.current_portfolio_value
-        
+
         # Check if the action involved changing indicator settings
         if action['type'] == 'change_indicator_settings':
             # Update technical indicator settings and recalculate market data with new settings.
-            self.chosen_indicators = self.update_indicator_settings(action['settings'])
+            self.update_indicator_settings(action['settings'])
+            print(f"Debug: chosen_indicators after change_indicator_settings: {self.chosen_indicators}")  # Debug line
             self.market_data = self.recalculate_market_data()
         
         elif action["type"] == "select_indicators":
             self.select_indicators(action['indicators'])
+            print(f"Debug: chosen_indicators after select_indicators: {self.chosen_indicators}")  # Debug line
             # You might also need to recalculate market data with the newly selected indicators
             self.market_data = self.recalculate_market_data()
 
@@ -189,15 +218,9 @@ class TradingEnvironment:
             # Nothing to do for hold
             pass
 
-        # Update previous action
-        self.previous_action = action
-
         # Get the new market state for the next time step
         self.current_step += 1
         self.market_state = self.market_data.iloc[self.current_step]
-
-        # Update the current portfolio value
-        self.current_portfolio_value = self.calculate_portfolio_value()
 
         # Update performance metrics
         self.performance_metrics = self.update_metrics()
@@ -226,49 +249,60 @@ class TradingEnvironment:
         return self.state
 
     def calculate_reward(self):
-            # Compute the return
+        # Compute the return
+        if self.previous_portfolio_value != 0:
             ret = (self.current_portfolio_value - self.previous_portfolio_value) / self.previous_portfolio_value
+        else:
+            ret = 0
 
-            # Compute a measure of risk
-            risk = np.std(self.portfolio_value_history)
+        # Compute a measure of risk
+        risk = np.std(self.portfolio_value_history)
 
-            # Add a small constant to the risk to prevent division by zero
-            EPSILON = 1e-8
-            risk += EPSILON
+        # Add a small constant to the risk to prevent division by zero
+        EPSILON = 1e-8
+        risk += EPSILON
 
-            # Compute the risk-adjusted return
-            risk_adjusted_return = ret / risk
+        # Compute the risk-adjusted return
+        risk_adjusted_return = ret / risk
 
-            # Compute a penalty for trading
-            trade_penalty = self.transaction_cost * (self.current_portfolio_value != self.previous_portfolio_value)
+        # Compute a penalty for trading
+        trade_penalty = self.transaction_cost * (self.current_portfolio_value != self.previous_portfolio_value)
 
-            # Compute an improvement bonus
-            improvement_bonus = 0.0
-            lookback_period = 10  # Define the period over which improvement is measured
-            if self.current_step > lookback_period:
+        # Compute an improvement bonus
+        improvement_bonus = 0.0
+        lookback_period = 10  # Define the period over which improvement is measured
+
+        if self.current_step > lookback_period:
+            if len(self.risk_adjusted_return_history) >= lookback_period and len(self.portfolio_value_history) >= lookback_period:
                 old_risk_adjusted_return = self.risk_adjusted_return_history[-lookback_period]
                 old_portfolio_value = self.portfolio_value_history[-lookback_period]
                 if risk_adjusted_return > old_risk_adjusted_return and self.current_portfolio_value > old_portfolio_value:
                     improvement_bonus = 0.1  # This value could be adjusted as per requirements
 
-            # The reward is the risk-adjusted return minus the trade penalty plus the improvement bonus
-            reward = risk_adjusted_return - trade_penalty + improvement_bonus
+        # The reward is the risk-adjusted return minus the trade penalty plus the improvement bonus
+        reward = risk_adjusted_return - trade_penalty + improvement_bonus
 
-            # Store current risk-adjusted return and portfolio value for future comparisons
-            self.risk_adjusted_return_history.append(risk_adjusted_return)
-            self.portfolio_value_history.append(self.current_portfolio_value)
+        # Store current risk-adjusted return and portfolio value for future comparisons
+        self.risk_adjusted_return_history.append(risk_adjusted_return)
+        self.portfolio_value_history.append(self.current_portfolio_value)
 
-            return reward
+        return reward
 
     def calculate_initial_metrics(self):
-        # Calculate initial metrics
+        # Initialize with default values
         self.performance_metrics = {
             'Portfolio Value': self.calculate_portfolio_value(),
-            'Running Average Value': self.calculate_portfolio_value(),  # Add this new metric
-            'Drawdown': 0,  # No drawdown at the start
-            'Winning Trades': 0,  # No trades at the start
-            'Total Trades': 0  # No trades at the start
+            'Running Average Value': self.calculate_portfolio_value(),
+            'Drawdown': 0,
+            'Winning Trades': 0,
+            'Total Trades': 0
         }
+        print("Calculating initial metrics")
+        try:
+            ...
+        except Exception as e:
+            ...
+        return self.performance_metrics
 
     def recalculate_market_data(self):
         # Reset the market data to the original data
@@ -295,10 +329,10 @@ class TradingEnvironment:
             'Winning Trades': self.winning_trades, 
             'Total Trades': self.total_trades 
         }
+        return self.performance_metrics
 
     def calculate_portfolio_value(self):
-        # Assuming 'close' is the closing price of the asset
-        return self.market_state['close'] * self.num_shares
+        return self.market_state['Close'] * self.num_shares
 
     def calculate_drawdown(self, current_value):
         if not hasattr(self, 'historical_peaks'):
@@ -306,29 +340,30 @@ class TradingEnvironment:
         self.historical_peaks = max(self.historical_peaks, current_value)
         drawdown = (self.historical_peaks - current_value) / self.historical_peaks
         return drawdown
-
+    
     def update_indicator_settings(self, new_settings):
         for indicator_name, settings in new_settings.items():
             if indicator_name in self.chosen_indicators:
-                # the indicator is present in the chosen_indicators dictionary and it has adjustable parameters
                 for param, value in settings.items():
-                    if param in self.all_indicators[indicator_name] and value in self.all_indicators[indicator_name][param]:
+                    if param in self.INDICATORS[indicator_name]['params'] and value in range(min(self.INDICATORS[indicator_name]['params'][param]), max(self.INDICATORS[indicator_name]['params'][param]) + 1):
                         self.chosen_indicators[indicator_name][param] = value
                     else:
+                        print(f"Debug: {param} in {self.INDICATORS[indicator_name]}: {param in self.INDICATORS[indicator_name]}")
+                        print(f"Debug: {value} in range: {value in range(min(self.INDICATORS[indicator_name][param]['params']), max(self.INDICATORS[indicator_name][param]['params']) + 1)}")
                         raise ValueError(f"Invalid setting: {param} = {value} for indicator: {indicator_name}")
-            elif indicator_name in self.all_indicators:
-                # the indicator is recognized but not currently selected
+            elif indicator_name in self.INDICATORS:
                 self.chosen_indicators[indicator_name] = {}
                 for param, value in settings.items():
-                    if param in self.all_indicators[indicator_name] and value in self.all_indicators[indicator_name][param]:
+                    if param in self.INDICATORS[indicator_name]['params'] and value in range(min(self.INDICATORS[indicator_name]['params'][param]), max(self.INDICATORS[indicator_name]['params'][param]) + 1):
                         self.chosen_indicators[indicator_name][param] = value
                     else:
+                        print(f"Debug: {param} in {self.INDICATORS[indicator_name]}: {param in self.INDICATORS[indicator_name]}")
+                        print(f"Debug: {value} in range: {value in range(min(self.INDICATORS[indicator_name][param]['params']), max(self.INDICATORS[indicator_name][param]['params']) + 1)}")
                         raise ValueError(f"Invalid setting: {param} = {value} for indicator: {indicator_name}")
             else:
-                # the indicator is not recognized
                 raise ValueError(f"Unknown indicator: {indicator_name}")
-        # recalculate indicator values with the updated settings
         self.calculate_indicators()
+        print(f"Debug: chosen_indicators after update_indicator_settings: {self.chosen_indicators}")  # Debug line
                     
     def indicator_settings_to_vector(self, settings):
         # Convert indicator settings to a vector (array)
@@ -380,24 +415,18 @@ class TradingEnvironment:
             self.indicator_values[indicator_name] = indicator_value
                 
     def select_indicators(self, chosen_indicators):
-        """
-        Method for the agent to select which indicators to use. This can be
-        called as part of the agent's initialization, or as an action the agent
-        can take.
-        """
-        # Validate the chosen indicators
         for indicator_name in chosen_indicators:
-            if indicator_name not in self.all_indicators:
+            indicator_name = indicator_name.lower()
+            if indicator_name not in self.INDICATORS:
                 raise ValueError(f"Unknown indicator: {indicator_name}")
 
-        # For each chosen indicator, select a random initial parameter value from
-        # the corresponding parameter range and add it to the chosen_indicators dict
         for indicator_name in chosen_indicators:
-            param_range = self.all_indicators[indicator_name]
-            # Ensure the initial value is an integer within the parameter range
+            indicator_name = indicator_name.lower()
+            param_range = self.INDICATORS[indicator_name]['params']['period']
             initial_value = random.randint(param_range.start, param_range.stop - 1)
             self.chosen_indicators[indicator_name] = {'period': initial_value}
-            
+        print(f"Debug: chosen_indicators after select_indicators: {self.chosen_indicators}")  # Debug line
+   
     def run_episode(self):
         self.env.reset()  # reset the environment to its initial state at the start of an episode
         done = False  # flag to track if the episode has ended
@@ -422,7 +451,7 @@ class TradingEnvironment:
         cost = self.cash_balance * (percentage / 100)
 
         # Calculate the number of shares that can be bought with this amount of cash
-        amount = cost / self.market_state['close']
+        amount = cost / self.market_state['Close']
 
         # If the cost is less than or equal to the current cash balance
         if cost <= self.cash_balance:
@@ -442,7 +471,7 @@ class TradingEnvironment:
         # If the amount of shares to sell is less than or equal to the number of shares in the portfolio
         if amount <= self.num_shares:
             # Calculate the proceeds from selling 'amount' shares
-            proceeds = self.market_state['close'] * amount
+            proceeds = self.market_state['Close'] * amount
 
             # Add the proceeds to the cash balance
             self.cash_balance += proceeds
@@ -451,8 +480,15 @@ class TradingEnvironment:
             self.num_shares -= amount
 
             # If the selling price is greater than the buying price, increment the winning trades counter
-            if self.market_state['close'] > self.buy_price:  
+            if self.market_state['Close'] > self.buy_price:  
                 self.winning_trades += 1
 
             # Update the total trades counter
             self.total_trades += 1
+
+    def action_to_vector(self, action):
+        action_space = ['Buy', 'Sell', 'Hold', 'change_indicator_settings', "select_indicators"]
+        action_vector = [0]*len(action_space) # Initialize the vector as all zeros
+        action_index = action_space.index(action) # Get the index of the action
+        action_vector[action_index] = 1 # Set the corresponding index in the vector to 1
+        return np.array([action_vector]) # Convert to numpy array for consistency with your other code
