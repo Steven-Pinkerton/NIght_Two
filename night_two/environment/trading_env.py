@@ -89,6 +89,11 @@ class TradingEnvironment:
         self.initialize_state()
 
         self.max_action = self.calculate_max_action()
+        
+        # Define the action and observation spaces
+        N = len(self.data.columns)  # Number of market features
+        self.action_space = self._define_action_space()
+        self.observation_space = self._define_observation_space(N+2)
 
     def calculate_max_action(self):
         # Define the possible percentages for shares to buy or sell
@@ -162,9 +167,17 @@ class TradingEnvironment:
         num_shares_vector = np.array([self.num_shares])
         cash_balance_vector = np.array([self.cash_balance])
 
+        # Check types
+        assert num_shares_vector.dtype.kind in 'biufc', f"Unexpected type: {num_shares_vector.dtype}"
+        assert cash_balance_vector.dtype.kind in 'biufc', f"Unexpected type: {cash_balance_vector.dtype}"
+
         # Convert performance metrics, chosen indicators to a compatible format
         performance_vector = self.metrics_to_vector(self.performance_metrics)
         indicator_vector = self.indicator_settings_to_vector(self.chosen_indicators)
+
+        # Check types
+        assert np.array(performance_vector).dtype.kind in 'biufc', f"Unexpected type: {np.array(performance_vector).dtype}"
+        assert np.array(indicator_vector).dtype.kind in 'biufc', f"Unexpected type: {np.array(indicator_vector).dtype}"
 
         # Ensure all components have 1 dimension
         if np.ndim(performance_vector) == 0:
@@ -176,15 +189,17 @@ class TradingEnvironment:
         full_state = np.concatenate([num_shares_vector, cash_balance_vector, self.market_state.values, performance_vector, indicator_vector])
 
         return full_state
-
     def metrics_to_vector(self, metrics):
         # Convert metrics dictionary to a vector (array), compatible with the rest of the state
         # This function simply extracts the values and forms a numpy array
-        metrics_vector = []
-        for key, value in metrics.items():
-            metrics_vector.append(value)
-        return metrics_vector
+        metrics_vector = [value for value in metrics.values() if np.isreal(value)]
         
+        # Check if all elements are numeric
+        if not np.all(np.isreal(metrics_vector)):
+            raise ValueError("All elements in metrics_vector should be numeric.")
+
+        return metrics_vector
+    
     def step(self, action):
         # Update the current portfolio value
         self.current_portfolio_value = self.calculate_portfolio_value()
@@ -369,6 +384,11 @@ class TradingEnvironment:
         # Convert indicator settings to a vector (array)
         # For simplicity, let's say settings are represented by a single scalar value for each indicator
         settings_vector = np.array(list(settings.values()))
+
+        # Check if all elements are numeric
+        if not np.all(np.isreal(settings_vector)):
+            raise ValueError("All elements in settings_vector should be numeric.")
+
         return settings_vector
 
     def calculate_indicators(self, params_values=None):
@@ -492,3 +512,13 @@ class TradingEnvironment:
         action_index = action_space.index(action) # Get the index of the action
         action_vector[action_index] = 1 # Set the corresponding index in the vector to 1
         return np.array([action_vector]) # Convert to numpy array for consistency with your other code
+    
+    
+    def _define_observation_space(self, size):
+            # if your state is a vector of continuous variables, you can represent this
+            # as a list of 'None' with the appropriate length. This signifies that any
+            # real number is an acceptable value in the state vector.
+            return [None] * size
+
+    def _define_action_space(self):
+        return ['buy', 'sell', 'hold', 'change_indicator_settings', 'select_indicators']

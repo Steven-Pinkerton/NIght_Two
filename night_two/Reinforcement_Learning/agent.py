@@ -38,6 +38,20 @@ class DDPGAgent:
         self.replay_buffer = ReplayBuffer(max_buffer_size)
 
     def get_action(self, state):
+        # State is a NumPy array. Convert it to PyTorch tensor for the model.
+        print(f"\nBefore conversion - Type of state: {type(state)}")  # Should be <class 'numpy.ndarray'>
+        print(f"Before conversion - Dtype of state: {state.dtype}")  # Should be a numeric type, not 'object'
+        print(f"Before conversion - Shape of state: {state.shape}")  # Just for additional information
+
+        # Ensure state is a PyTorch tensor
+        if not isinstance(state, torch.Tensor):
+            print("\nConverting state to a tensor")
+            state = torch.tensor(state, dtype=torch.float32)
+
+        print(f"\nAfter conversion - Type of state: {type(state)}")
+        print(f"After conversion - Dtype of state: {state.dtype}")
+        print(f"After conversion - Shape of state: {state.shape}")
+
         self.actor_model.eval()
         with torch.no_grad():
             action = self.actor_model(state).numpy()
