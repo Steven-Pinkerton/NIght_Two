@@ -7,93 +7,97 @@ from night_two.data_handling.data_preprocessing import preprocess_data
 from night_two.data_handling.indicators import calculate_ad, calculate_adx, calculate_aroon, calculate_atr, calculate_atr_bands, calculate_bbands, calculate_cci, calculate_chaikin_money_flow, calculate_chaikin_oscillator, calculate_chaikin_volatility, calculate_cmo, calculate_coppock, calculate_donchian_channels, calculate_dpo, calculate_elder_ray_index, calculate_ema, calculate_force_index, calculate_hull_moving_average, calculate_ichimoku, calculate_keltner_channels, calculate_kst, calculate_linear_regression, calculate_macd, calculate_psar, calculate_pvt, calculate_rainbow_moving_averages, calculate_rsi, calculate_sma, calculate_standard_deviation_channels, calculate_tmf, calculate_trange, calculate_twiggs_momentum_oscillator, calculate_twiggs_trend_index, calculate_vol_oscillator, calculate_wilder_moving_average, calculate_williams_ad, calculate_wma 
 
 class TradingEnvironment:
-    def __init__(self, initial_cash_balance=10000.0, transaction_cost=0.01, data_source='russell_2000_daily.csv'):
-        # Define all available indicators and their default settings
-        
-        self.INDICATORS = {
-            'sma': {'func': calculate_sma, 'params': {'period': range(10, 51)}},
-            'rsi': {'func': calculate_rsi, 'params': {'period': range(5, 31)}},
-            'bbands': {'func': calculate_bbands, 'params': {'period': range(10, 51)}},
-            'macd': {'func': calculate_macd, 'params': {'fastperiod': range(10, 26), 'slowperiod': range(27, 51), 'signalperiod': range(5, 10)}},
-            'psar': {'func': calculate_psar, 'params': {'acceleration': [x * 0.01 for x in range(2, 21)], 'maximum': [x * 0.01 for x in range(2, 21)]}},
-            'wma': {'func': calculate_wma, 'params': {'period': range(10, 51)}},
-            'ema': {'func': calculate_ema, 'params': {'period': range(10, 51)}},
-            'aroon': {'func': calculate_aroon, 'params': {'period': range(5, 31)}},
-            'atr': {'func': calculate_atr, 'params': {'period': range(5, 31)}},
-            'adx': {'func': calculate_adx, 'params': {'period': range(5, 31)}},
-            'cmo': {'func': calculate_cmo, 'params': {'period': range(5, 31)}},
-            'dpo': {'func': calculate_dpo, 'params': {'period': range(5, 31)}},
-            'vol_oscillator': {'func': calculate_vol_oscillator, 'params': {'short_period': range(3, 16), 'long_period': range(17, 31)}},
-            'cci': {'func': calculate_cci, 'params': {'timeperiod': range(10, 51)}},
-            'tmf': {'func': calculate_tmf, 'params': {'timeperiod': range(10, 31)}},
-            'donchian_channels': {'func': calculate_donchian_channels, 'params': {'n': range(10, 51)}},
-            'keltner_channels': {'func': calculate_keltner_channels, 'params': {'n': range(10, 51)}},
-            'atr_bands': {'func': calculate_atr_bands, 'params': {'n': range(10, 51)}},
-            'elder_ray_index': {'func': calculate_elder_ray_index, 'params': {'n': range(10, 51)}},
-            'hull_moving_average': {'func': calculate_hull_moving_average, 'params': {'n': range(5, 26)}},
-            'rainbow_moving_averages': {'func': calculate_rainbow_moving_averages, 'params': {'periods': range(5, 31)}},
-            'chaikin_money_flow': {'func': calculate_chaikin_money_flow, 'params': {'n': range(10, 51)}},
-            'chaikin_volatility': {'func': calculate_chaikin_volatility, 'params': {'n': range(10, 51)}},
-            'standard_deviation_channels': {'func': calculate_standard_deviation_channels, 'params': {'n': range(10, 51)}},
-            'wilder_moving_average': {'func': calculate_wilder_moving_average, 'params': {'n': range(5, 31)}},
-            'twiggs_momentum_oscillator': {'func': calculate_twiggs_momentum_oscillator, 'params': {'n': range(10, 51)}},
-            'twiggs_trend_index': {'func': calculate_twiggs_trend_index, 'params': {'n': range(10, 51)}},
-            'linear_regression': {'func': calculate_linear_regression, 'params': {'window': range(5, 31)}},
-            'coppock': {'func': calculate_coppock, 'params': {'short_roc_period': range(10, 21), 'long_roc_period': range(22, 31), 'wma_period': range(5, 16)}},
-            'kst': {'func': calculate_kst, 'params': {'rc1': range(5, 16), 'rc2': range(10, 21), 'rc3': range(15, 26), 'rc4': range(20, 31), 'sma1': range(5, 16), 'sma2': range(10, 21), 'sma3': range(15, 26), 'sma4': range(20, 31)}},
-            'force_index': {'func': calculate_force_index, 'params': {'period': range(5, 31)}},
-            # other indicators...
-        }
-        # Define the action space
-        self.action_space = ['buy', 'sell', 'hold', 'change_indicator_settings', "select_indicators"]
-        
-        # Initialize the current portfolio value
-        self.current_portfolio_value = 0
-        
-        # Initialize the previous portfolio value
-        self.previous_portfolio_value = 0
-        
-        
-        self.historical_peaks = 0
-        
-        # Assign all indicators to chosen_indicators
-        self.chosen_indicators = {}
-        
-        # Initialize account balances and transactions costs and total trades.
+    def __init__(self, initial_cash_balance: float = 10000.0, transaction_cost: float = 0.01, data_source: str = 'russell_2000_daily.csv') -> None:
+        """
+        Initialize a new instance of the trading environment.
+
+        :param initial_cash_balance: The initial amount of cash available.
+        :param transaction_cost: The cost per transaction.
+        :param data_source: The source of the market data.
+        """
+
+        # Initialize the cash balance and transaction costs.
         self.cash_balance = initial_cash_balance
         self.transaction_cost = transaction_cost
+
+        # Initialize the data, loading it from the specified data source.
+        self.data = self.load_market_data(data_source)
+
+        # Store a copy of the original market data.
+        self.original_market_data = self.data.copy()
+
+        # Initialize other attributes.
+        self._initialize_attributes()
+
+        # Initialize the action and observation spaces.
+        self.action_space = self._define_action_space()
+        self.observation_space = self._define_observation_space(len(self.data.columns) + 2)
+
+    def _initialize_attributes(self) -> None:
+        """
+        Initialize various attributes used by the environment.
+        """
+
+        # Define all available indicators and their default settings.
+        self._initialize_indicators()
+
+        # Initialize portfolio values.
+        self.current_portfolio_value = 0
+        self.previous_portfolio_value = 0
+        self.historical_peaks = 0
+
+        # Initialize the number of shares and the total trades.
         self.num_shares = 0
         self.total_trades = 0
-            
+
+        # Initialize the risk-adjusted return and portfolio value history.
         self.risk_adjusted_return_history = []
         self.portfolio_value_history = []
-        
-        
-        # Initialize the data
-        self.data = self.load_market_data(data_source)
-        self.original_market_data = self.data.copy()  # store the original data
-        self.market_data = self.recalculate_market_data()
-        self.indicator_data = self.data
-        self.current_step = 0
-        self.initial_cash_balance = initial_cash_balance
-        
-    
-        # Initialize params_values as a copy of INDICATORS
-        self.params_values = copy.deepcopy(self.INDICATORS)
 
-        
-         # Initialize the indicators
-        self.indicator_values = {name: None for name in self.INDICATORS.keys()}
-
-        # Initialize state
+        # Initialize the state.
         self.initialize_state()
 
-        self.max_action = self.calculate_max_action()
-        
-        # Define the action and observation spaces
-        N = len(self.data.columns)  # Number of market features
-        self.action_space = self._define_action_space()
-        self.observation_space = self._define_observation_space(N+2)
+    def _initialize_indicators(self) -> None:
+        """
+        Initialize the indicators and their settings.
+        """
+
+        # Define all available indicators and their default settings.
+        self.INDICATORS = {
+            'sma': {'func': calculate_sma, 'params': {'period': range(10, 51)}},
+            # ...
+        }
+
+        # Initialize indicator_settings as an empty dictionary.
+        self.indicator_settings = {}
+
+        # Assign all indicators to chosen_indicators.
+        self.chosen_indicators = {}
+
+        # Initialize params_values as a copy of INDICATORS.
+        self.params_values = copy.deepcopy(self.INDICATORS)
+
+        # Initialize the indicators.
+        self.indicator_values = {name: None for name in self.INDICATORS.keys()}
+
+    def _define_observation_space(self, size: int) -> List[Optional[float]]:
+        """
+        Define the observation space.
+
+        :param size: The size of the observation space.
+        :return: The observation space.
+        """
+
+        return [None] * size
+
+    def _define_action_space(self) -> List[str]:
+        """
+        Define the action space.
+
+        :return: The action space.
+        """
+
+        return ['buy', 'sell', 'hold', 'change_indicator_settings', 'select_indicators']
 
     def calculate_max_action(self):
         # Define the possible percentages for shares to buy or sell
@@ -163,6 +167,11 @@ class TradingEnvironment:
         return self.state
 
     def concatenate_state(self):
+        # Debug lines
+        print("In concatenate_state")
+        print(f"Before concatenation - Type of num_shares: {type(self.num_shares)}, Value: {self.num_shares}")
+        print(f"Before concatenation - Type of cash_balance: {type(self.cash_balance)}, Value: {self.cash_balance}")
+
         # Convert num_shares and cash_balance into a compatible format with market_state
         num_shares_vector = np.array([self.num_shares])
         cash_balance_vector = np.array([self.cash_balance])
@@ -171,13 +180,20 @@ class TradingEnvironment:
         assert num_shares_vector.dtype.kind in 'biufc', f"Unexpected type: {num_shares_vector.dtype}"
         assert cash_balance_vector.dtype.kind in 'biufc', f"Unexpected type: {cash_balance_vector.dtype}"
 
+        # Convert 'Date' to Unix timestamp and then to float
+        self.market_state['Date'] = pd.to_datetime(self.market_state['Date']).dt.timestamp()        
+        
+        # Convert pandas Series to a numpy array
+        market_state_vector = self.market_state.to_numpy()
+
         # Convert performance metrics, chosen indicators to a compatible format
         performance_vector = self.metrics_to_vector(self.performance_metrics)
-        indicator_vector = self.indicator_settings_to_vector(self.chosen_indicators)
+        indicator_vector = self.indicator_settings_to_vector(self.indicator_settings)
 
-        # Check types
-        assert np.array(performance_vector).dtype.kind in 'biufc', f"Unexpected type: {np.array(performance_vector).dtype}"
-        assert np.array(indicator_vector).dtype.kind in 'biufc', f"Unexpected type: {np.array(indicator_vector).dtype}"
+
+        # Debug lines
+        print(f"After conversion - Type of performance_vector: {type(performance_vector)}, Values: {performance_vector}")
+        print(f"After conversion - Type of indicator_vector: {type(indicator_vector)}, Values: {indicator_vector}")
 
         # Ensure all components have 1 dimension
         if np.ndim(performance_vector) == 0:
@@ -188,12 +204,22 @@ class TradingEnvironment:
         # Concatenate all components of the state
         full_state = np.concatenate([num_shares_vector, cash_balance_vector, self.market_state.values, performance_vector, indicator_vector])
 
+        # Debug lines
+        print(f"Full state - Type: {type(full_state)}, Shape: {full_state.shape}, Values: {full_state}")
+
         return full_state
+    
     def metrics_to_vector(self, metrics):
+        # Debug line
+        print("In metrics_to_vector")
+
         # Convert metrics dictionary to a vector (array), compatible with the rest of the state
         # This function simply extracts the values and forms a numpy array
-        metrics_vector = [value for value in metrics.values() if np.isreal(value)]
-        
+        metrics_vector = np.array([value for value in metrics.values() if np.isreal(value)])
+
+        # Debug line
+        print(f"Metrics vector - Type: {type(metrics_vector)}, Values: {metrics_vector}")
+
         # Check if all elements are numeric
         if not np.all(np.isreal(metrics_vector)):
             raise ValueError("All elements in metrics_vector should be numeric.")
@@ -201,6 +227,9 @@ class TradingEnvironment:
         return metrics_vector
     
     def step(self, action):
+        # Debug line
+        print("In step")
+
         # Update the current portfolio value
         self.current_portfolio_value = self.calculate_portfolio_value()
 
@@ -381,9 +410,15 @@ class TradingEnvironment:
         print(f"Debug: chosen_indicators after update_indicator_settings: {self.chosen_indicators}")  # Debug line
                     
     def indicator_settings_to_vector(self, settings):
+        # Debug line
+        print("In indicator_settings_to_vector")
+
         # Convert indicator settings to a vector (array)
         # For simplicity, let's say settings are represented by a single scalar value for each indicator
         settings_vector = np.array(list(settings.values()))
+
+        # Debug line
+        print(f"Settings vector - Type: {type(settings_vector)}, Values: {settings_vector}")
 
         # Check if all elements are numeric
         if not np.all(np.isreal(settings_vector)):
@@ -512,7 +547,6 @@ class TradingEnvironment:
         action_index = action_space.index(action) # Get the index of the action
         action_vector[action_index] = 1 # Set the corresponding index in the vector to 1
         return np.array([action_vector]) # Convert to numpy array for consistency with your other code
-    
     
     def _define_observation_space(self, size):
             # if your state is a vector of continuous variables, you can represent this

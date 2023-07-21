@@ -198,6 +198,8 @@ class OUNoise:
         return self.state
     
     def get_action(self, action, t=0):
+        state = state.drop('Date', axis=0)  # drop the 'Date' column
+        state = torch.tensor(state.values, dtype=torch.float32)  # convert to a tensor
         ou_state = self.evolve_state()
         self.sigma = self.max_sigma - (self.max_sigma - self.min_sigma) * min(1.0, t / self.decay_period)
         return action + ou_state
