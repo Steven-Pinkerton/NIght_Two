@@ -1,3 +1,4 @@
+import os
 import unittest
 import mock
 import pandas as pd
@@ -11,265 +12,351 @@ from night_two.environment.trading_env import TradingEnvironment
 
 class TestTradingEnvironment(unittest.TestCase):
     def setUp(self):
-        self.env = TradingEnvironment()
-        self.env.historical_peaks = 10
-            
-    def test_init(self):
-        # Test that the environment is initialized correctly
-        self.assertEqual(self.env.cash_balance, 10000.0)
-        self.assertEqual(self.env.transaction_cost, 0.01)
-        self.assertEqual(self.env.current_step, 0)
-        self.assertEqual(self.env.num_shares, 0)
-        self.assertEqual(self.env.initial_cash_balance, 10000.0)
-
-        # Check that all indicators have been initialized
-        self.assertEqual(set(self.env.indicator_values.keys()), set(self.env.INDICATORS.keys()))
-        self.assertEqual(set(self.env.params_values.keys()), set(self.env.INDICATORS.keys()))
-        # All indicator values should be None at this point
-        self.assertTrue(all(value is None for value in self.env.indicator_values.values()))
-
-        # Check that chosen_indicators is an empty dictionary
-        self.assertEqual(self.env.chosen_indicators, {})
-
-        # Check that risk_adjusted_return_history and portfolio_value_history are empty lists
-        self.assertEqual(self.env.risk_adjusted_return_history, [])
-        self.assertEqual(self.env.portfolio_value_history, [])
-
-        # Check that max_action has been calculated and is not None
-        self.assertIsNotNone(self.env.max_action)
-           
-    def test_step_change_indicator_settings(self):
-        from pandas.testing import assert_frame_equal
-        # Mocking the `random.choice` function to control the output during testing
-        with mock.patch('random.choice', return_value=20):
-            # Creating a `TradingEnvironment` instance
-            trading_env = TradingEnvironment()
-
-            # Set the current step to a specific point
-            trading_env.current_step = 10
-
-            # Set a test indicator
-            trading_env.chosen_indicators = {
-                'sma': {'period': range(10, 51)}
-            }
-
-            # Setting up the new settings
-            new_settings = {
-                'sma': {'period': 20}
-            }
-
-            # Setting up the action
-            action = {
-                'type': 'change_indicator_settings',
-                'settings': new_settings
-            }
-
-            with mock.patch.object(trading_env, 'calculate_indicators', return_value=None) as mock_calculate_indicators:
-                # Execute step function with 'change_indicator_settings' action
-                state, reward, done = trading_env.step(action)
-
-                # Assert that `calculate_indicators` was called
-                mock_calculate_indicators.assert_called_once()
-
-            # Assert that new settings are applied correctly
-            assert trading_env.chosen_indicators['sma']['period'] == 20
-
-            # Assert that market data is correctly updated
-            assert 'sma' in trading_env.market_data.columns
-
-            # Assert exception when update_indicator_settings is called with invalid settings
-            with pytest.raises(ValueError):
-                trading_env.update_indicator_settings({'invalid_indicator': {'period': 20}})
-
-            # Assert recalculate_market_data correctly resets the market_data
-            original_columns = trading_env.original_market_data.columns
-            assert_frame_equal(trading_env.market_data[original_columns], trading_env.original_market_data)
-
-            # Assert calculate_indicators correctly handles parameter ranges
-            trading_env.chosen_indicators = {
-                'sma': {'period': range(10, 51)}
-            }
-            trading_env.calculate_indicators()
-            assert trading_env.actual_params_values['sma']['period'] == 20
-
-                        
-    def test_select_indicators_updates_chosen_indicators_correctly(self):
-        # Given
-        agent = TradingEnvironment()
-        action = {
-            'type': 'select_indicators',
-            'indicators': ['sma', 'ema']
-        }
-
-        # When
-        state, reward, done = agent.step(action)
-
-        # Then
-        for indicator_name in action['indicators']:
-            assert indicator_name in agent.chosen_indicators
-        
-    def test_select_indicators_selects_random_initial_settings(self):
-        # Given
-        agent = TradingEnvironment()
-        action = {
-            'type': 'select_indicators',
-            'indicators': ['sma', 'ema']
-        }
-
-        # When
-        state, reward, done = agent.step(action)
-
-        # Then
-        for indicator_name in action['indicators']:
-            assert 'period' in agent.chosen_indicators[indicator_name]
-            assert min(agent.INDICATORS[indicator_name]['params']['period']) <= agent.chosen_indicators[indicator_name]['period'] < max(agent.INDICATORS[indicator_name]['params']['period'])
-            
-    def test_select_indicators_calls_recalculate_market_data(self):
-        # Given
-        agent = TradingEnvironment()
-        action = {
-            'type': 'select_indicators',
-            'indicators': ['sma', 'ema']
-        }
-
-        # Create a mock DataFrame
-        mock_df = pd.DataFrame({
-            'Close': [1, 2, 3],
-            'col2': [4, 5, 6]
+        # A small sample data frame for testing
+        sample_data = pd.DataFrame({
+            'Open': [1, 2, 4, 8],
+            'High': [2, 3, 5, 10],
+            'Low': [0.5, 1.5, 3.5, 7.5],
+            'Close': [1.5, 2.5, 4.5, 9],
+            'Volume': [100, 200, 300, 400]
         })
 
-        # When
-        with patch.object(agent, 'recalculate_market_data') as mock_recalculate:
-            mock_recalculate.return_value = mock_df
-            state, reward, done = agent.step(action)
+        sample_data.to_csv('sample_data.csv')
 
-        # Then
-        mock_recalculate.assert_called_once()
+        # Create an instance of the trading environment
+        self.trading_env = TradingEnvironment(initial_cash_balance=10000.0, 
+                                            transaction_cost=0.01, 
+                                            data_source='sample_data.csv')
+
+        # Set an initial number of shares
+        self.trading_env.num_shares = 300.00
         
-    def test_select_indicators_raises_error_for_unknown_indicator(self):
-        # Given
-        agent = TradingEnvironment()
-        action = {
-            'type': 'select_indicators',
-            'indicators': ['sma', 'unknown_indicator']
-        }
 
-        # When & Then
-        with pytest.raises(ValueError, match='Unknown indicator: unknown_indicator'):
-            state, reward, done = agent.step(action)
-            
-    def test_buy_asset_updates_cash_balance_and_num_shares_and_total_trades(self):
-        # Given
-        agent = TradingEnvironment()
-        action = {
-            'type': 'buy',
-            'percentage': 10
-        }
-        initial_cash_balance = agent.cash_balance
-        initial_num_shares = agent.num_shares
-        initial_total_trades = agent.total_trades
-        cost = initial_cash_balance * (action['percentage'] / 100)
-        print(agent.market_state)
-        amount = cost / agent.market_state['Close']
-
-        # When
-        state, reward, done = agent.step(action)
-
-        # Then
-        assert agent.cash_balance == initial_cash_balance - cost
-        assert agent.num_shares == initial_num_shares + amount
-        assert agent.total_trades == initial_total_trades + 1
+        # Set initial portfolio value
+        initial_stock_value = self.trading_env.num_shares * sample_data.loc[0, 'Close']
+        self.trading_env.current_portfolio_value = self.trading_env.cash_balance + initial_stock_value
+        self.trading_env.previous_portfolio_value = self.trading_env.current_portfolio_value
         
-    def test_sell_asset_updates_cash_balance_and_num_shares_and_total_trades_and_potentially_winning_trades(self):
-        # Given
-        agent = TradingEnvironment()
-        action = {
-            'type': 'sell',
-            'percentage': 10
-        }
-        initial_cash_balance = agent.cash_balance
-        initial_num_shares = agent.num_shares
-        initial_total_trades = agent.total_trades
-        initial_winning_trades = agent.winning_trades
-        amount = initial_num_shares * (action['percentage'] / 100)
-        proceeds = agent.market_state['Close'] * amount
-        win_trade = agent.market_state['Close'] > agent.buy_price
+    def test_init(self):
+        # Assert that the cash balance is initialized correctly
+        self.assertEqual(self.trading_env.cash_balance, 10000.0)
 
-        # When
-        state, reward, done = agent.step(action)
+        # Assert that the transaction cost is initialized correctly
+        self.assertEqual(self.trading_env.transaction_cost, 0.01)
 
-        # Then
-        assert agent.cash_balance == initial_cash_balance + proceeds
-        assert agent.num_shares == initial_num_shares - amount
-        assert agent.total_trades == initial_total_trades + 1
-        if win_trade:
-            assert agent.winning_trades == initial_winning_trades + 1
-        else:
-            assert agent.winning_trades == initial_winning_trades
-            
-    def test_calculate_portfolio_value(self):
-        # Given
-        agent = TradingEnvironment()
-        close_price = agent.market_state['Close']
-        num_shares = agent.num_shares
+        # Assert that the data is loaded correctly
+        self.assertEqual(len(self.trading_env.data), 4)
 
-        # When
-        calculated_value = agent.calculate_portfolio_value()
+        # Assert that the action and observation spaces are defined
+        self.assertIsNotNone(self.trading_env.action_space)
+        self.assertIsNotNone(self.trading_env.observation_space)
 
-        # Then
-        assert calculated_value == close_price * num_shares
+    def test_initialize_attributes(self):
+        # Assert that the indicators are initialized correctly
+        self.assertIsNotNone(self.trading_env.INDICATORS)
+
+        # Assert that the chosen_indicators dictionary is empty
+        self.assertDictEqual(self.trading_env.chosen_indicators, {})
+
+        # Assert that the params_values dictionary is initialized correctly
+        self.assertDictEqual(self.trading_env.params_values, self.trading_env.INDICATORS)
+
+        # Assert that the indicator_values dictionary is initialized correctly
+        self.assertDictEqual(self.trading_env.indicator_values, 
+                            {name: None for name in self.trading_env.INDICATORS.keys()})
+
+        # Assert that the portfolio attributes are initialized correctly
+        initial_stock_value = self.trading_env.num_shares * self.trading_env.data.loc[0, 'Close']
+        expected_portfolio_value = self.trading_env.cash_balance + initial_stock_value
+
+        self.assertEqual(self.trading_env.current_portfolio_value, expected_portfolio_value)
+        self.assertEqual(self.trading_env.previous_portfolio_value, expected_portfolio_value)
+        self.assertEqual(self.trading_env.historical_peaks, 0)
+        self.assertEqual(self.trading_env.num_shares, 300.00)
+        self.assertEqual(self.trading_env.total_trades, 0)
+
+        # Assert that the return and value history lists are initialized as empty lists
+        self.assertListEqual(self.trading_env.risk_adjusted_return_history, [])
+        self.assertListEqual(self.trading_env.portfolio_value_history, [])
+
+        # Assert that the state is initialized
+        self.assertIsNotNone(self.trading_env.state)
+           
+    def test_define_observation_space(self):
+        # Call the method with an example size
+        obs_space = self.trading_env._define_observation_space(5)
         
-    def test_update_metrics(self):
-        # Given
-        agent = TradingEnvironment()
-        initial_metrics = agent.performance_metrics
+        # Assert that the length of the observation space is correct
+        self.assertEqual(len(obs_space), 5)
 
-        # When
-        portfolio_value = 1000.0
-        with patch.object(agent, 'calculate_portfolio_value', return_value=portfolio_value):
-            agent.update_metrics()
-            current_portfolio_value = agent.calculate_portfolio_value()
+        # Assert that all elements in the observation space are None
+        self.assertTrue(all(element is None for element in obs_space))
 
-        # Then
-        running_average_value = (initial_metrics['Running Average Value'] * (agent.current_step - 1) + current_portfolio_value) / agent.current_step
-        drawdown = agent.calculate_drawdown(current_portfolio_value)
-        assert agent.performance_metrics == {
-            'Portfolio Value': current_portfolio_value,
-            'Running Average Value': running_average_value,
-            'Drawdown': drawdown,
-            'Winning Trades': agent.winning_trades, 
-            'Total Trades': agent.total_trades 
-        }
-            
-    def test_concatenate_state(self):
-        # Given
-        agent = TradingEnvironment()
+    def test_define_action_space(self):
+        # Call the method
+        action_space = self.trading_env._define_action_space()
 
-        # When
-        full_state = agent.concatenate_state()
+        # Define the expected action space
+        expected_action_space = ['buy', 'sell', 'hold', 'change_indicator_settings', 'select_indicators']
 
-        # Then
-        num_shares_vector = np.array([agent.num_shares])
-        cash_balance_vector = np.array([agent.cash_balance])
-        performance_vector = agent.metrics_to_vector(agent.performance_metrics)
-        indicator_vector = agent.indicator_settings_to_vector(agent.chosen_indicators)
-        expected_state = np.concatenate([num_shares_vector, cash_balance_vector, agent.market_state.values, performance_vector, indicator_vector])
-        assert np.array_equal(full_state, expected_state)
-    
+        # Assert that the action space is correct
+        self.assertListEqual(action_space, expected_action_space)       
+           
+    def test_load_market_data(self):
+        # Create a small dataframe for testing
+        data = {'Close': [1, 2, 3, 4, 5], 'Open': [1.1, 2.1, 3.1, 4.1, 5.1]}
+        df = pd.DataFrame(data)
+        
+        # Write this dataframe to a CSV file
+        df.to_csv('test_data.csv', index=False)
+
+        # Call the method with the test data
+        loaded_data = self.trading_env.load_market_data('test_data.csv')
+        
+        # Assert that the loaded data is equal to the test data
+        pd.testing.assert_frame_equal(loaded_data, df)
+        
+        # Cleanup: remove the test csv file
+        os.remove('test_data.csv')       
+           
+    def test_reset(self):
+        # Change some attributes from their initial state
+        self.trading_env.current_step = 10
+        self.trading_env.portfolio = 5000
+        self.trading_env.cash_balance = 5000
+        self.trading_env.buy_price = 100
+        self.trading_env.sell_price = 200
+        self.trading_env.winning_trades = 1
+        self.trading_env.total_trades = 1
+
+        # Call the reset method
+        self.trading_env.reset()
+
+        # Assert that all attributes have been reset to their initial state
+        self.assertEqual(self.trading_env.current_step, 0)
+        self.assertEqual(self.trading_env.portfolio, 0)
+        self.assertEqual(self.trading_env.cash_balance, self.trading_env.initial_cash_balance)
+        self.assertEqual(self.trading_env.buy_price, 0)
+        self.assertEqual(self.trading_env.sell_price, 0)
+        self.assertEqual(self.trading_env.winning_trades, 0)
+        self.assertEqual(self.trading_env.total_trades, 0)       
+           
+    def test_step(self):
+        # Define a small, known market data for testing
+        data = {'Close': [1, 2, 3, 4, 5], 'Open': [1.1, 2.1, 3.1, 4.1, 5.1]}
+        df = pd.DataFrame(data)
+
+        # Initialize the trading environment with this known market data
+        self.trading_env = TradingEnvironment(data_source=df)
+
+        # Test the 'buy' action
+        initial_state = self.trading_env.state.copy()
+        action = {'type': 'buy', 'percentage': 100}
+        new_state, reward, done = self.trading_env.step(action)
+        self.assertFalse(np.array_equal(initial_state, new_state))
+        self.assertIsInstance(reward, float)
+        self.assertFalse(done)
+
+        # Reset the environment
+        self.trading_env.reset()
+
+        # Test the 'sell' action
+        initial_state = self.trading_env.state.copy()
+        action = {'type': 'sell', 'percentage': 100}
+        new_state, reward, done = self.trading_env.step(action)
+        self.assertFalse(np.array_equal(initial_state, new_state))
+        self.assertIsInstance(reward, float)
+        self.assertFalse(done)
+
+        # Reset the environment
+        self.trading_env.reset()
+
+        # Test the 'hold' action
+        initial_state = self.trading_env.state.copy()
+        action = {'type': 'hold'}
+        new_state, reward, done = self.trading_env.step(action)
+        self.assertFalse(np.array_equal(initial_state, new_state))
+        self.assertIsInstance(reward, float)
+        self.assertFalse(done)
+
+        # Reset the environment
+        self.trading_env.reset()
+
+        # Test the 'change_indicator_settings' action
+        initial_state = self.trading_env.state.copy()
+        action = {'type': 'change_indicator_settings', 'settings': {'sma': {'period': 20}}}
+        new_state, reward, done = self.trading_env.step(action)
+        self.assertFalse(np.array_equal(initial_state, new_state))
+        self.assertIsInstance(reward, float)
+        self.assertFalse(done)
+
+        # Reset the environment
+        self.trading_env.reset()
+
+        # Test the 'select_indicators' action
+        initial_state = self.trading_env.state.copy()
+        action = {'type': 'select_indicators', 'indicators': ['sma']}
+        new_state, reward, done = self.trading_env.step(action)
+        self.assertFalse(np.array_equal(initial_state, new_state))
+        self.assertIsInstance(reward, float)
+        self.assertFalse(done)   
+         
     def test_calculate_reward(self):
-        # Given
-        agent = TradingEnvironment()
-        agent.previous_portfolio_value = 100
-        agent.current_portfolio_value = 120
-        agent.transaction_cost = 0.01
-        agent.portfolio_value_history = [100, 105, 110, 115, 120]  # Add more values here
-        
-        # When
-        reward = agent.calculate_reward()
+        # Define a small, known market data for testing
+        data = {'Close': [1, 2, 3, 4, 5], 'Open': [1.1, 2.1, 3.1, 4.1, 5.1]}
+        df = pd.DataFrame(data)
 
-        # Then
-        assert reward >= 0
-        assert isinstance(reward, float)
+        # Initialize the trading environment with this known market data
+        self.trading_env = TradingEnvironment(data_source=df)
+
+        # Buy asset
+        action = {'type': 'buy', 'percentage': 100}
+        self.trading_env.step(action)
+
+        # Compute reward after buying
+        reward = self.trading_env.calculate_reward()
+        self.assertIsInstance(reward, float)
+
+        # Advance a few steps in the environment
+        for _ in range(5):
+            self.trading_env.step({'type': 'hold'})
+
+        # Compute reward after holding
+        reward_after_holding = self.trading_env.calculate_reward()
+        self.assertIsInstance(reward_after_holding, float)
+
+        # Check that reward does not change over time when holding
+        self.assertEqual(reward, reward_after_holding)
+
+        # Sell asset
+        action = {'type': 'sell', 'percentage': 100}
+        self.trading_env.step(action)
+
+        # Compute reward after selling
+        reward_after_selling = self.trading_env.calculate_reward()
+        self.assertIsInstance(reward_after_selling, float)
+
+        # Check that reward changes after selling
+        self.assertNotEqual(reward_after_holding, reward_after_selling)
         
+    def test_update_parameters(self):
+        # Initialize the trading environment
+        self.trading_env = TradingEnvironment()
+
+        # Define the parameters for an indicator
+        params = {
+            "param1": range(1, 11),  # 1 to 10 inclusive
+            "param2": range(5, 16),  # 5 to 15 inclusive
+            "param3": 7  # not a range
+        }
+
+        # Call the update_parameters method for a mock indicator
+        updated_params = self.trading_env.update_parameters("mock_indicator", params)
+
+        # Check that the updated parameters are no longer ranges and are within the expected bounds
+        self.assertIsInstance(updated_params["param1"], int)
+        self.assertGreaterEqual(updated_params["param1"], 1)
+        self.assertLessEqual(updated_params["param1"], 10)
+
+        self.assertIsInstance(updated_params["param2"], int)
+        self.assertGreaterEqual(updated_params["param2"], 5)
+        self.assertLessEqual(updated_params["param2"], 15)
+
+        # Check that parameters which were not ranges remain the same
+        self.assertEqual(updated_params["param3"], 7)  
+       
+    def test_calculate_and_store_indicator_value(self):
+        # Initialize the trading environment
+        self.trading_env = TradingEnvironment()
+
+        # Define a simple indicator function
+        def mock_indicator(data, multiplier):
+            return data * multiplier
+
+        # Define the parameters for the mock indicator
+        params = {"multiplier": 2}
+
+        # Store some mock indicator data
+        self.trading_env.indicator_data = 3
+
+        # Call the calculate_and_store_indicator_value method with the mock indicator
+        self.trading_env.calculate_and_store_indicator_value("mock_indicator", mock_indicator, params)
+
+        # Check that the mock indicator value has been stored correctly
+        self.assertEqual(self.trading_env.indicator_values["mock_indicator"], 6)
+
+    def test_select_indicators(self):
+        # Initialize the trading environment
+        self.trading_env = TradingEnvironment()
+
+        # Define a list of indicators to select
+        indicators = ["indicator1", "indicator2"]
+
+        # Add these indicators to the environment's INDICATORS dict with mock params
+        self.trading_env.INDICATORS = {
+            "indicator1": {"params": {"period": range(5, 10)}},
+            "indicator2": {"params": {"period": range(10, 15)}}
+        }
+
+        # Call the select_indicators method with the chosen indicators
+        self.trading_env.select_indicators(indicators)
+
+        # Check that the chosen indicators and their parameters have been stored correctly
+        self.assertIn("indicator1", self.trading_env.chosen_indicators)
+        self.assertIn("indicator2", self.trading_env.chosen_indicators)
+
+        # Check that an error is raised when an unknown indicator is chosen
+        with self.assertRaises(ValueError):
+            self.trading_env.select_indicators(["indicator3"])
+  
+    def test_buy_asset(self):
+        # Initialize the trading environment
+        self.trading_env = TradingEnvironment()
+
+        # Set an initial cash balance
+        self.trading_env.cash_balance = 1000
+
+        # Mock the market state
+        self.trading_env.market_state = {'Close': 50}
+
+        # Call the buy_asset method
+        self.trading_env.buy_asset(50)
+
+        # Check that the cash balance is decreased correctly
+        self.assertEqual(self.trading_env.cash_balance, 500)
+
+        # Check that the correct number of shares were bought
+        self.assertEqual(self.trading_env.num_shares, 10)
+
+        # Check that the total number of trades was incremented
+        self.assertEqual(self.trading_env.total_trades, 1)   
+         
+    def test_sell_asset(self):
+        # Initialize the trading environment
+        self.trading_env = TradingEnvironment()
+
+        # Set an initial cash balance and number of shares
+        self.trading_env.cash_balance = 1000
+        self.trading_env.num_shares = 20
+        self.trading_env.buy_price = 50
+
+        # Mock the market state
+        self.trading_env.market_state = {'Close': 60}
+
+        # Call the sell_asset method
+        self.trading_env.sell_asset(50)
+
+        # Check that the cash balance is increased correctly
+        self.assertEqual(self.trading_env.cash_balance, 1000 + 0.5*20*60)
+
+        # Check that the correct number of shares were sold
+        self.assertEqual(self.trading_env.num_shares, 10)
+
+        # Check that the total number of trades was incremented
+        self.assertEqual(self.trading_env.total_trades, 1)
+
+        # Check that winning trades were counted correctly
+        self.assertEqual(self.trading_env.winning_trades, 1)     
+
 if __name__ == '__main__':
     unittest.main()

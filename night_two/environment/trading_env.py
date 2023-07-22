@@ -1,5 +1,6 @@
 import copy
 import numpy as np
+from typing import List, Optional, Dict, Union, Any, Tuple, Callable
 import random
 import pandas as pd
 from collections import defaultdict
@@ -18,7 +19,9 @@ class TradingEnvironment:
 
         # Initialize the cash balance and transaction costs.
         self.cash_balance = initial_cash_balance
+        self.initial_cash_balance = initial_cash_balance
         self.transaction_cost = transaction_cost
+
 
         # Initialize the data, loading it from the specified data source.
         self.data = self.load_market_data(data_source)
@@ -37,9 +40,19 @@ class TradingEnvironment:
         """
         Initialize various attributes used by the environment.
         """
-
         # Define all available indicators and their default settings.
         self._initialize_indicators()
+        
+        self.last_action = None
+        
+        # Initialize the last trade value.
+        self.last_trade_value = 0.0
+
+        # Initialize the params_values as a copy of INDICATORS.
+        self.params_values = copy.deepcopy(self.INDICATORS)
+        
+        # Initialize actual_params_values with the same keys as INDICATORS
+        self.actual_params_values = {indicator: {} for indicator in self.INDICATORS.keys()}
 
         # Initialize portfolio values.
         self.current_portfolio_value = 0
@@ -64,8 +77,44 @@ class TradingEnvironment:
 
         # Define all available indicators and their default settings.
         self.INDICATORS = {
-            'sma': {'func': calculate_sma, 'params': {'period': range(10, 51)}},
-            # ...
+            'sma': {'func': calculate_sma, 'params': {'period': range(1, 500)}},
+            'rsi': {'func': calculate_rsi, 'params': {'period': range(1, 500)}},
+            'bbands': {'func': calculate_bbands, 'params': {'period': range(1, 500)}},
+            'macd': {'func': calculate_macd, 'params': {'fastperiod': range(1, 500), 'slowperiod': range(1, 500), 'signalperiod': range(1, 500)}},
+            'psar': {'func': calculate_psar, 'params': {'acceleration': range(0, 10), 'maximum': range(0, 10)}},
+            'trange': {'func': calculate_trange, 'params': {}},
+            'wma': {'func': calculate_wma, 'params': {'period': range(1, 500)}},
+            'ema': {'func': calculate_ema, 'params': {'period': range(1, 500)}},
+            'aroon': {'func': calculate_aroon, 'params': {'period': range(1, 500)}},
+            'atr': {'func': calculate_atr, 'params': {'period': range(1, 500)}},
+            'ad': {'func': calculate_ad, 'params': {}},
+            'adx': {'func': calculate_adx, 'params': {'period': range(1, 500)}},
+            'ichimoku': {'func': calculate_ichimoku, 'params': {}},
+            'linear_regression': {'func': calculate_linear_regression, 'params': {}},
+            'cmo': {'func': calculate_cmo, 'params': {'period': range(1, 500)}},
+            'dpo': {'func': calculate_dpo, 'params': {'period': range(1, 500)}},
+            'vol_oscillator': {'func': calculate_vol_oscillator, 'params': {'short_period': range(1, 500), 'long_period': range(1, 500)}},
+            'williams_ad': {'func': calculate_williams_ad, 'params': {}},
+            'cci': {'func': calculate_cci, 'params': {'timeperiod': range(1, 500)}},
+            'pvt': {'func': calculate_pvt, 'params': {}},
+            'tmf': {'func': calculate_tmf, 'params': {'timeperiod': range(1, 500)}},
+            'donchian_channels': {'func': calculate_donchian_channels, 'params': {'n': range(1, 500)}},
+            'keltner_channels': {'func': calculate_keltner_channels, 'params': {'n': range(1, 500)}},
+            'atr_bands': {'func': calculate_atr_bands, 'params': {'n': range(1, 500)}},
+            'elder_ray_index': {'func': calculate_elder_ray_index, 'params': {'n': range(1, 500)}},
+            'hull_moving_average': {'func': calculate_hull_moving_average, 'params': {'n': range(1, 500)}},
+            'rainbow_moving_averages': {'func': calculate_rainbow_moving_averages, 'params': {'periods': range(1, 500)}},
+            'chaikin_money_flow': {'func': calculate_chaikin_money_flow, 'params': {'n': range(1, 500)}},
+            'chaikin_oscillator': {'func': calculate_chaikin_oscillator, 'params': {}},
+            'chaikin_volatility': {'func': calculate_chaikin_volatility, 'params': {'n': range(1, 500)}},
+            'standard_deviation_channels': {'func': calculate_standard_deviation_channels, 'params': {'n': range(1, 500)}},
+            'wilder_moving_average': {'func': calculate_wilder_moving_average, 'params': {'n': range(1, 500)}},
+            'twiggs_momentum_oscillator': {'func': calculate_twiggs_momentum_oscillator, 'params': {'n': range(1, 500)}},
+            'twiggs_trend_index': {'func': calculate_twiggs_trend_index, 'params': {'n': range(1, 500)}},
+            'linear_regression': {'func': calculate_linear_regression, 'params': {'window': range(1, 500)}},
+            'coppock': {'func': calculate_coppock, 'params': {'short_roc_period': range(1, 500), 'long_roc_period': range(1, 500), 'wma_period': range(1, 500)}},
+            'kst': {'func': calculate_kst, 'params': {'rc1': range(1, 500), 'rc2': range(1, 500), 'rc3': range(1, 500), 'rc4': range(1, 500), 'sma1': range(1, 500), 'sma2': range(1, 500), 'sma3': range(1, 500), 'sma4': range(1, 500)}},
+            'force_index': {'func': calculate_force_index, 'params': {'period': range(1, 500)}}
         }
 
         # Initialize indicator_settings as an empty dictionary.
@@ -81,26 +130,43 @@ class TradingEnvironment:
         self.indicator_values = {name: None for name in self.INDICATORS.keys()}
 
     def _define_observation_space(self, size: int) -> List[Optional[float]]:
-        """
-        Define the observation space.
+        # Define the observation space for the trading environment. 
+        # An observation space represents the state of the environment that the agent observes.
 
-        :param size: The size of the observation space.
-        :return: The observation space.
-        """
+        # Parameters:
+        # size (int): The size of the observation space.
 
+        # Returns:
+        # List[Optional[float]]: The observation space, which is a list of size `size` 
+        #                    with all elements as `None`, signifying that any real number 
+        #                    is an acceptable value in the state vector.
+        
+
+        # If your state is a vector of continuous variables, you can represent this
+        # as a list of 'None' with the appropriate length. This signifies that any
+        # real number is an acceptable value in the state vector.
         return [None] * size
 
-    def _define_action_space(self) -> List[str]:
-        """
-        Define the action space.
+    def _define_action_space(self) -> List[str]: 
+        # Define the action space for the trading environment. 
+        # An action space consists of all possible actions that an agent can take in the environment.
 
-        :return: The action space.
-        """
+        # Returns:
+        # List[str]: The action space, which is a list of the possible actions that 
+        #        the agent can take. In this case, it includes 'buy', 'sell', 'hold', 
+        #        'change_indicator_settings', and 'select_indicators'.
 
+        # Define the action space as a list of all possible actions.
         return ['buy', 'sell', 'hold', 'change_indicator_settings', 'select_indicators']
 
-    def calculate_max_action(self):
-        # Define the possible percentages for shares to buy or sell
+    def calculate_max_action(self) -> int:
+    # Calculate the maximum number of actions that the trading agent can take. 
+    # This includes both trade actions and actions to change indicator settings.
+
+    # Returns:
+    # int: The total number of possible actions. 
+
+    # Define the possible percentages for shares to buy or sell
         percentages = [i for i in range(1, 101)]  # range from 1 to 100
 
         # Define the action space
@@ -123,77 +189,56 @@ class TradingEnvironment:
 
         return max_action
 
-    def load_market_data(self, data_source):
-        # Load the market data from the data source
-        market_data = pd.read_csv(data_source)
+    def load_market_data(self, data_source: Union[str, pd.DataFrame]) -> pd.DataFrame:
+        
+        #Load market data from a CSV file or directly from a DataFrame.
+        # 
+        # Parameters:
+        # data_source (Union[str, pd.DataFrame]): Either a path to the CSV file containing the market data, or
+        #                                    a pandas DataFrame object containing the market data.
 
-        # Extract the required Series from the DataFrame
-        data_series = {
-            'high': market_data['High'],
-            'low': market_data['Low'],
-            'close': market_data['Close'],
-            'volume': market_data['Volume']
-        }
+        #Returns:
+        #pd.DataFrame: DataFrame containing the loaded market data. 
 
+        #Raises:
+        #ValueError: If the data_source is not a string (assumed to be a file path) or a pandas DataFrame.
+
+        # Check the type of the data_source
+        if isinstance(data_source, pd.DataFrame):
+            # If data_source is a DataFrame, use it directly
+            market_data = data_source
+        elif isinstance(data_source, str):
+            # If data_source is a string, attempt to load a CSV file from the path specified
+            market_data = pd.read_csv(data_source)
+        else:
+            # If data_source is neither a DataFrame nor a string, raise an error
+            raise ValueError("Invalid type for data_source. Must be a pandas DataFrame or a string path to a CSV file.")
+        
+        # Return the loaded market data
         return market_data
 
-    def initialize_state(self):
-        # Initialize the portfolio with 0 shares
-        self.num_shares = 0
+    def concatenate_state(self) -> np.ndarray:
+        """
+        Combine various components of the environment state into a single numpy array. 
+        
+        :return: The full state of the environment, including the number of shares, cash balance, market state,
+                performance metrics, chosen indicators, and prices of the asset when it was last bought or sold.
+        """
 
-        # Initialize the cash balance
-        self.cash_balance = self.initial_cash_balance
-
-        # Initialize the market state
-        self.market_state = self.data.iloc[0]
-
-        # Initialize performance metrics
-        print(f'market_state: {self.market_state}')
-        print(f'num_shares: {self.num_shares}')
-        self.performance_metrics = self.calculate_initial_metrics()
-
-        # Initialize chosen indicators as empty dictionary
-        self.chosen_indicators = {}
-
-        # Initialize prices and counters
-        self.buy_price = 0  # Price at which the asset was last bought
-        self.sell_price = 0  # Price at which the asset was last sold
-        self.winning_trades = 0
-        self.total_trades = 0
-
-        # Concatenate portfolio state, cash balance and market state into full state
-        self.state = self.concatenate_state()
-
-        return self.state
-
-    def concatenate_state(self):
-        # Debug lines
-        print("In concatenate_state")
-        print(f"Before concatenation - Type of num_shares: {type(self.num_shares)}, Value: {self.num_shares}")
-        print(f"Before concatenation - Type of cash_balance: {type(self.cash_balance)}, Value: {self.cash_balance}")
-
-        # Convert num_shares and cash_balance into a compatible format with market_state
+        # Convert single value components to numpy arrays
         num_shares_vector = np.array([self.num_shares])
         cash_balance_vector = np.array([self.cash_balance])
+        buy_price_vector = np.array([self.buy_price])
+        sell_price_vector = np.array([self.sell_price])
 
-        # Check types
-        assert num_shares_vector.dtype.kind in 'biufc', f"Unexpected type: {num_shares_vector.dtype}"
-        assert cash_balance_vector.dtype.kind in 'biufc', f"Unexpected type: {cash_balance_vector.dtype}"
-
-        # Convert 'Date' to Unix timestamp and then to float
-        self.market_state['Date'] = pd.to_datetime(self.market_state['Date']).dt.timestamp()        
-        
-        # Convert pandas Series to a numpy array
+        # Convert 'Date' in the market state to Unix timestamp and then to a numpy array
+        if 'Date' in self.market_state:
+            self.market_state['Date'] = pd.to_datetime(self.market_state['Date']).timestamp()
         market_state_vector = self.market_state.to_numpy()
 
-        # Convert performance metrics, chosen indicators to a compatible format
+        # Convert performance metrics and chosen indicators to numpy arrays
         performance_vector = self.metrics_to_vector(self.performance_metrics)
         indicator_vector = self.indicator_settings_to_vector(self.indicator_settings)
-
-
-        # Debug lines
-        print(f"After conversion - Type of performance_vector: {type(performance_vector)}, Values: {performance_vector}")
-        print(f"After conversion - Type of indicator_vector: {type(indicator_vector)}, Values: {indicator_vector}")
 
         # Ensure all components have 1 dimension
         if np.ndim(performance_vector) == 0:
@@ -202,87 +247,156 @@ class TradingEnvironment:
             indicator_vector = np.array([indicator_vector])
 
         # Concatenate all components of the state
-        full_state = np.concatenate([num_shares_vector, cash_balance_vector, self.market_state.values, performance_vector, indicator_vector])
-
-        # Debug lines
-        print(f"Full state - Type: {type(full_state)}, Shape: {full_state.shape}, Values: {full_state}")
+        full_state = np.concatenate([num_shares_vector, cash_balance_vector, market_state_vector, 
+                                    performance_vector, indicator_vector, buy_price_vector, sell_price_vector])
 
         return full_state
-    
-    def metrics_to_vector(self, metrics):
-        # Debug line
-        print("In metrics_to_vector")
 
-        # Convert metrics dictionary to a vector (array), compatible with the rest of the state
-        # This function simply extracts the values and forms a numpy array
+    def initialize_state(self) -> pd.Series:
+        """
+        This method initializes various aspects of the trading environment such as the portfolio, 
+        cash balance, market state, performance metrics, chosen indicators, prices, counters and
+        finally concatenates these to form the initial state of the environment.
+        """
+        # Initialize the portfolio with 0 shares
+        self.num_shares: int = 0
+        
+        # Initialize the current step
+        self.current_step: int = 0
+
+        # Initialize the cash balance with the initial cash balance
+        self.cash_balance: float = self.initial_cash_balance
+
+        # Initialize the market state with the first row of market data
+        self.market_state: pd.Series = self.data.iloc[0]
+
+        # Initialize performance metrics
+        self.performance_metrics: Dict[str, float] = self.calculate_initial_metrics()
+
+        # Initialize chosen indicators as an empty dictionary
+        self.chosen_indicators: Dict[str, Any] = {}
+
+        # Initialize prices of asset when it was last bought or sold
+        self.buy_price: float = 0.0  # Price at which the asset was last bought
+        self.sell_price: float = 0.0  # Price at which the asset was last sold
+
+        # Initialize counters for winning trades and total trades
+        self.winning_trades: int = 0
+        self.total_trades: int = 0
+
+        # Concatenate portfolio state, cash balance, and market state into full state
+        self.state: pd.Series = self.concatenate_state()
+
+        return self.state
+    
+    def metrics_to_vector(self, metrics: Dict[str, Union[float, int]]) -> np.ndarray:
+        """
+        Converts the given metrics dictionary to a vector (numpy array). 
+        The function extracts the values from the dictionary, forms a numpy array, 
+        and then checks if all the elements are real numbers (integers or floats).
+
+        Args:
+            metrics (Dict[str, Union[float, int]]): The input metrics dictionary.
+        
+        Raises:
+            ValueError: If any element in the created numpy array is not a real number.
+
+        Returns:
+            np.ndarray: The resulting numpy array.
+        """
+        # Convert metrics dictionary to a vector (array), compatible with the rest of the state.
+        # This function simply extracts the values and forms a numpy array.
         metrics_vector = np.array([value for value in metrics.values() if np.isreal(value)])
 
-        # Debug line
-        print(f"Metrics vector - Type: {type(metrics_vector)}, Values: {metrics_vector}")
-
-        # Check if all elements are numeric
+        # Check if all elements are numeric. If not, raise an error.
         if not np.all(np.isreal(metrics_vector)):
             raise ValueError("All elements in metrics_vector should be numeric.")
 
         return metrics_vector
     
-    def step(self, action):
-        # Debug line
+    def step(self, action: Dict[str, Union[str, int]]) -> Tuple[np.ndarray, float, bool]:
+        """
+        Takes an action based on the current market state and updates the state.
+
+        :param action: A dictionary containing the type of action and relevant details.
+        :return: Updated state, calculated reward and a boolean indicating if the episode has ended.
+        """
         print("In step")
 
         # Update the current portfolio value
-        self.current_portfolio_value = self.calculate_portfolio_value()
+        self.calculate_portfolio_value() 
 
-        # Calculate the reward
+        # Calculate the initial reward
         reward = self.calculate_reward()
 
         # Store the current portfolio value into previous_portfolio_value
         self.previous_portfolio_value = self.current_portfolio_value
 
-        # Check if the action involved changing indicator settings
+        # Handle action
+        self.handle_action(action)
+
+        # Get the new market state for the next time step
+        self.current_step += 1
+
+        # Check if the episode has ended before getting the next market state
+        if self.current_step >= len(self.data):
+            done = True
+        else:
+            self.market_state = self.data.iloc[self.current_step]
+            done = False
+
+        # Update performance metrics and state
+        self.update_metrics_and_state()
+
+        # Calculate the final reward
+        reward = self.calculate_reward()
+
+        return self.state, reward, done
+
+    def handle_action(self, action: Dict[str, Union[str, int]]) -> None:
+        """
+        Handle the specified action type.
+
+        :param action: A dictionary containing the type of action and relevant details.
+        :return: None
+        """
+        self.last_action = action['type']  # Store the last action
+
         if action['type'] == 'change_indicator_settings':
-            # Update technical indicator settings and recalculate market data with new settings.
             self.update_indicator_settings(action['settings'])
-            print(f"Debug: chosen_indicators after change_indicator_settings: {self.chosen_indicators}")  # Debug line
-            self.market_data = self.recalculate_market_data()
-        
+
         elif action["type"] == "select_indicators":
             self.select_indicators(action['indicators'])
-            print(f"Debug: chosen_indicators after select_indicators: {self.chosen_indicators}")  # Debug line
-            # You might also need to recalculate market data with the newly selected indicators
-            self.market_data = self.recalculate_market_data()
 
         elif action['type'] == 'buy':
             self.buy_asset(action['percentage'])
 
         elif action['type'] == 'sell':
             self.sell_asset(action['percentage'])
-        
+
         elif action['type'] == 'hold':
-            # Nothing to do for hold
-            pass
+            pass  # Nothing to do for hold
 
-        # Get the new market state for the next time step
-        self.current_step += 1
-        self.market_state = self.market_data.iloc[self.current_step]
+    def update_metrics_and_state(self) -> None:
+    # Updates performance metrics and state.
+    # :return: None
 
-        # Update performance metrics
         self.performance_metrics = self.update_metrics()
-
-        # Update full state
         self.state = self.concatenate_state()
+    
+    def check_episode_end(self) -> bool:
+        """
+        Checks if the episode has ended.
 
-        # Calculate the reward
-        reward = self.calculate_reward()
-
-        # Check if the episode has ended
-        done = self.current_step >= len(self.market_data) - 1 or self.cash_balance <= 0
-
-        return self.state, reward, done
-
-    def reset(self):
+        :return: Boolean indicating if the episode has ended.
+        """
+        return self.current_step >= len(self.data) - 1 or self.cash_balance <= 0
+    
+    def reset(self) -> np.ndarray:
+        """
+        Resets the environment to its initial state and returns the initial state.
+        """
         # Reset the environment to the initial state
-        self.state = self.initialize_state()
         self.current_step = 0
         self.portfolio = 0
         self.cash_balance = self.initial_cash_balance
@@ -290,29 +404,82 @@ class TradingEnvironment:
         self.sell_price = 0
         self.winning_trades = 0
         self.total_trades = 0
+
+        # Initialize the state
+        self.state = self.initialize_state()
+
         return self.state
 
-    def calculate_reward(self):
+    def calculate_reward(self) -> float:
+        # Calculate the reward based on the risk-adjusted return, trade penalty, and improvement bonus.
+
         # Compute the return
-        if self.previous_portfolio_value != 0:
-            ret = (self.current_portfolio_value - self.previous_portfolio_value) / self.previous_portfolio_value
-        else:
-            ret = 0
+        ret = self.compute_return()
+        print(f"Return: {ret}")
 
         # Compute a measure of risk
-        risk = np.std(self.portfolio_value_history)
-
-        # Add a small constant to the risk to prevent division by zero
-        EPSILON = 1e-8
-        risk += EPSILON
+        risk = self.compute_risk()
+        print(f"Risk: {risk}")
 
         # Compute the risk-adjusted return
-        risk_adjusted_return = ret / risk
+        risk_adjusted_return = self.compute_risk_adjusted_return(ret, risk)
+        print(f"Risk Adjusted Return: {risk_adjusted_return}")
 
         # Compute a penalty for trading
-        trade_penalty = self.transaction_cost * (self.current_portfolio_value != self.previous_portfolio_value)
+        trade_penalty = self.compute_trade_penalty()
+        print(f"Trade Penalty: {trade_penalty}")
 
         # Compute an improvement bonus
+        improvement_bonus = self.compute_improvement_bonus(risk_adjusted_return)
+        print(f"Improvement Bonus: {improvement_bonus}")
+
+        # The reward is the risk-adjusted return minus the trade penalty plus the improvement bonus
+        reward = risk_adjusted_return - trade_penalty + improvement_bonus
+        print(f"Reward: {reward}")
+
+        # Store current risk-adjusted return and portfolio value for future comparisons
+        self.update_reward_history(risk_adjusted_return)
+
+        return reward
+    
+    def compute_return(self) -> float:
+        """
+        Computes the return based on current and previous portfolio value.
+        """
+        if self.previous_portfolio_value != 0:
+            return (self.current_portfolio_value - self.previous_portfolio_value) / self.previous_portfolio_value
+        else:
+            return 0
+    
+    def compute_risk(self) -> float:
+        """
+        Computes a measure of risk based on the standard deviation of the portfolio value history.
+        """
+        risk = np.std(self.portfolio_value_history)
+        # Add a small constant to the risk to prevent division by zero
+        EPSILON = 1e-8
+        return risk + EPSILON
+
+    def compute_risk_adjusted_return(self, ret: float, risk: float) -> float:
+        """
+        Computes the risk-adjusted return.
+        """
+        return ret / risk
+
+    def compute_trade_penalty(self) -> float:
+        """
+        Computes a penalty for trading based on transaction cost and change in portfolio value.
+        """
+        if self.last_action is None or self.last_action == "hold":
+            return 0.0
+        else:
+            return self.transaction_cost * abs(self.last_trade_value)
+
+    def compute_improvement_bonus(self, risk_adjusted_return: float) -> float:
+        """
+        Computes an improvement bonus if risk-adjusted return and current portfolio value are 
+        both greater than their respective values from lookback_period steps ago.
+        """
         improvement_bonus = 0.0
         lookback_period = 10  # Define the period over which improvement is measured
 
@@ -323,16 +490,24 @@ class TradingEnvironment:
                 if risk_adjusted_return > old_risk_adjusted_return and self.current_portfolio_value > old_portfolio_value:
                     improvement_bonus = 0.1  # This value could be adjusted as per requirements
 
-        # The reward is the risk-adjusted return minus the trade penalty plus the improvement bonus
-        reward = risk_adjusted_return - trade_penalty + improvement_bonus
+        return improvement_bonus
 
-        # Store current risk-adjusted return and portfolio value for future comparisons
+    def update_reward_history(self, risk_adjusted_return: float) -> None:
+        """
+        Updates risk-adjusted return history and portfolio value history.
+        """
         self.risk_adjusted_return_history.append(risk_adjusted_return)
         self.portfolio_value_history.append(self.current_portfolio_value)
 
-        return reward
+    def calculate_initial_metrics(self) -> Dict[str, Union[float, int]]:
+        """
+        This function initializes the performance metrics with default values. 
+        The metrics include portfolio value, running average value, drawdown, 
+        winning trades, and total trades.
 
-    def calculate_initial_metrics(self):
+        :return: A dictionary of performance metrics.
+        """
+
         # Initialize with default values
         self.performance_metrics = {
             'Portfolio Value': self.calculate_portfolio_value(),
@@ -341,14 +516,18 @@ class TradingEnvironment:
             'Winning Trades': 0,
             'Total Trades': 0
         }
-        print("Calculating initial metrics")
-        try:
-            ...
-        except Exception as e:
-            ...
+
+        # Return the initialized performance metrics
         return self.performance_metrics
 
-    def recalculate_market_data(self):
+    def recalculate_market_data(self) -> pd.DataFrame:
+        """
+        This function recalculates the market data based on the updated settings 
+        of the chosen indicators.
+
+        :return: A pandas DataFrame of recalculated market data.
+        """
+
         # Reset the market data to the original data
         self.market_data = self.original_market_data.copy()
 
@@ -360,12 +539,21 @@ class TradingEnvironment:
             # Calculate the indicator and update the market data
             self.market_data[indicator_name] = indicator_func(self.market_data, **settings)
 
+        # Return the recalculated market data
         return self.market_data
     
-    def update_metrics(self):
+    def update_metrics(self) -> Dict[str, Union[float, int]]:
+        """
+        This function updates the performance metrics based on the current state 
+        of the portfolio and market.
+
+        :return: A dictionary of updated performance metrics.
+        """
+
         # Update metrics
         current_portfolio_value = self.calculate_portfolio_value()
         running_average_value = (self.performance_metrics['Running Average Value'] * (self.current_step - 1) + current_portfolio_value) / self.current_step
+        
         self.performance_metrics = {
             'Portfolio Value': current_portfolio_value,
             'Running Average Value': running_average_value,
@@ -373,52 +561,108 @@ class TradingEnvironment:
             'Winning Trades': self.winning_trades, 
             'Total Trades': self.total_trades 
         }
+
+        # Return the updated performance metrics
         return self.performance_metrics
 
-    def calculate_portfolio_value(self):
-        return self.market_state['Close'] * self.num_shares
+    def calculate_portfolio_value(self) -> float:
+        """
+        Function to calculate the current value of the portfolio based on the
+        number of shares held and the closing price of the market state.
+        """
+        portfolio_value = self.market_state['Close'] * self.num_shares
+        self.current_portfolio_value = portfolio_value
+        return portfolio_value
 
-    def calculate_drawdown(self, current_value):
+    def calculate_drawdown(self, current_value: float) -> float:
+        """
+        Function to calculate the drawdown based on the current value of the 
+        portfolio and the historical peak value. Drawdown is a measure of 
+        the decline from the historical peak in some variable (usually the 
+        cumulative profit or total open equity).
+        """
+        # Check if historical_peaks attribute exists, if not initialize it with current_value
         if not hasattr(self, 'historical_peaks'):
             self.historical_peaks = current_value
+        # Update historical peaks with maximum of current value and existing historical peak value
         self.historical_peaks = max(self.historical_peaks, current_value)
+        # Calculate drawdown as a proportion of the decline from the historical peak
         drawdown = (self.historical_peaks - current_value) / self.historical_peaks
         return drawdown
     
-    def update_indicator_settings(self, new_settings):
+    def validate_setting(self, indicator_name: str, param: str, value: Any) -> bool:
+        """
+        Validate the value of a setting for a given indicator.
+
+        Args:
+            indicator_name (str): Name of the indicator.
+            param (str): Name of the parameter to validate.
+            value (any): Value of the parameter to validate.
+
+        Returns:
+            bool: True if the setting is valid, False otherwise.
+        """
+        param_range = self.INDICATORS[indicator_name]['params'][param]
+        if param_range is None:
+            return False
+
+        # Check if the value is within the allowed range.
+        return param_range.start <= value < param_range.stop
+
+    def update_existing_indicator(self, indicator_name: str, settings: Dict[str, int]) -> None:
+        """
+        Update the settings for an existing indicator.
+        """
+        for param, value in settings.items():
+            if self.validate_setting(indicator_name, param, value):
+                self.chosen_indicators[indicator_name][param] = value
+            else:
+                raise ValueError(f"Invalid setting: {param} = {value} for indicator: {indicator_name}")
+
+    def add_new_indicator(self, indicator_name: str, settings: Dict[str, int]) -> None:
+        """
+        Add a new indicator with its settings.
+        """
+        self.chosen_indicators[indicator_name] = {}
+        for param, value in settings.items():
+            if self.validate_setting(indicator_name, param, value):
+                self.chosen_indicators[indicator_name][param] = value
+            else:
+                raise ValueError(f"Invalid setting: {param} = {value} for indicator: {indicator_name}")
+
+    def update_indicator_settings(self, new_settings: Dict[str, Dict[str, int]]) -> None:
+        """
+        Update the settings for the chosen indicators.
+        """
         for indicator_name, settings in new_settings.items():
             if indicator_name in self.chosen_indicators:
                 for param, value in settings.items():
-                    if param in self.INDICATORS[indicator_name]['params'] and value in range(min(self.INDICATORS[indicator_name]['params'][param]), max(self.INDICATORS[indicator_name]['params'][param]) + 1):
-                        self.chosen_indicators[indicator_name][param] = value
-                    else:
-                        print(f"Debug: {param} in {self.INDICATORS[indicator_name]}: {param in self.INDICATORS[indicator_name]}")
-                        print(f"Debug: {value} in range: {value in range(min(self.INDICATORS[indicator_name][param]['params']), max(self.INDICATORS[indicator_name][param]['params']) + 1)}")
-                        raise ValueError(f"Invalid setting: {param} = {value} for indicator: {indicator_name}")
+                    # Validate that the value is within the allowed range for this parameter
+                    allowed_range = self.INDICATORS[indicator_name]['params'][param]
+                    if allowed_range is not None and (value < allowed_range.start or value >= allowed_range.stop):
+                        raise ValueError(f"Invalid value {value} for parameter {param} of indicator {indicator_name}")
+                self.update_existing_indicator(indicator_name, settings)
             elif indicator_name in self.INDICATORS:
-                self.chosen_indicators[indicator_name] = {}
-                for param, value in settings.items():
-                    if param in self.INDICATORS[indicator_name]['params'] and value in range(min(self.INDICATORS[indicator_name]['params'][param]), max(self.INDICATORS[indicator_name]['params'][param]) + 1):
-                        self.chosen_indicators[indicator_name][param] = value
-                    else:
-                        print(f"Debug: {param} in {self.INDICATORS[indicator_name]}: {param in self.INDICATORS[indicator_name]}")
-                        print(f"Debug: {value} in range: {value in range(min(self.INDICATORS[indicator_name][param]['params']), max(self.INDICATORS[indicator_name][param]['params']) + 1)}")
-                        raise ValueError(f"Invalid setting: {param} = {value} for indicator: {indicator_name}")
+                self.add_new_indicator(indicator_name, settings)
             else:
                 raise ValueError(f"Unknown indicator: {indicator_name}")
         self.calculate_indicators()
-        print(f"Debug: chosen_indicators after update_indicator_settings: {self.chosen_indicators}")  # Debug line
-                    
-    def indicator_settings_to_vector(self, settings):
-        # Debug line
-        print("In indicator_settings_to_vector")
+    
+    def indicator_settings_to_vector(self, settings: Dict[str, Union[int, float]]) -> np.ndarray:
+        """
+        Convert indicator settings to a vector (numpy array). 
+        For simplicity, it is assumed settings are represented by a single scalar value for each indicator.
 
-        # Convert indicator settings to a vector (array)
-        # For simplicity, let's say settings are represented by a single scalar value for each indicator
+        Args:
+            settings: A dictionary containing the indicator settings.
+
+        Returns:
+            A numpy array containing the settings values.
+
+        Raises:
+            ValueError: If any element in the settings is not numeric.
+        """
         settings_vector = np.array(list(settings.values()))
-
-        # Debug line
-        print(f"Settings vector - Type: {type(settings_vector)}, Values: {settings_vector}")
 
         # Check if all elements are numeric
         if not np.all(np.isreal(settings_vector)):
@@ -426,18 +670,28 @@ class TradingEnvironment:
 
         return settings_vector
 
-    def calculate_indicators(self, params_values=None):
-        """Calculate the value for all chosen indicators."""
+    def calculate_indicators(self, params_values: Optional[Dict[str, Dict[str, Any]]]=None) -> None:
+        """
+        Calculate the value for all chosen indicators.
+        This method goes through all the chosen indicators and updates their parameters if necessary.
+        It then calculates the indicator values using these parameters and the indicator function, 
+        and stores the calculated values.
+        
+        Args:
+            params_values (dict): An optional dictionary containing parameter values for each indicator. 
+                                If not provided, the existing parameter values are used. 
+        Raises:
+            Exception: If market data is not loaded before calling this method.
+        """
         # Ensure market data is loaded
-        if self.indicator_data is None:
+        if self.indicator_values is None:
             raise Exception("Market data must be loaded before calculating indicators")
         
         # If no new parameter values provided, use existing ones
         params_values = params_values if params_values is not None else self.params_values
 
         # Initialize actual_params_values if it doesn't exist
-        if not hasattr(self, 'actual_params_values'):
-            self.actual_params_values = copy.deepcopy(params_values)  # initial copy of params_values
+        self.actual_params_values = copy.deepcopy(params_values) if not hasattr(self, 'actual_params_values') else self.actual_params_values
 
         # Iterate over all chosen indicators
         for indicator_name, settings in self.chosen_indicators.items():
@@ -446,30 +700,71 @@ class TradingEnvironment:
 
             # Get parameters for this indicator from provided values
             params = params_values.get(indicator_name, {}).get('params', {})
-
-            # Check if parameter value is a range and if so, select a random integer from it
-            for param, value in params.items():
-                if isinstance(value, range):
-                    # Select a random value from the range and store it
-                    if param not in self.actual_params_values.get(indicator_name, {}):
-                        self.actual_params_values[indicator_name][param] = random.choice(value)
-                    params[param] = self.actual_params_values[indicator_name][param]  # use the actual stored value
-
-            # Print params for debugging
-            print(f"For indicator '{indicator_name}', parameters are: {params}")
+            
+            # Update the parameters
+            params = self.update_parameters(indicator_name, params)
 
             # Calculate the indicator value with the determined parameters
-            try:
-                indicator_value = indicator_func(self.indicator_data, **params)
-            except Exception as e:
-                print(f"Error calculating indicator {indicator_name} with params {params}")
-                print(f"Exception: {e}")
-                continue
+            self.calculate_and_store_indicator_value(indicator_name, indicator_func, params)
+           
+    def update_parameters(self, indicator_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update the parameters of the indicator by checking if value is a range. 
+        If so, a random integer from this range is selected and used as the value for that parameter.
 
-            # Store the calculated indicator value
-            self.indicator_values[indicator_name] = indicator_value
+        Args:
+            indicator_name (str): Name of the indicator.
+            params (dict): Dictionary containing parameter values for the indicator.
+
+        Returns:
+            dict: Updated dictionary of parameter values.
+        """
+        # Create the dictionary for the indicator if it doesn't exist
+        if indicator_name not in self.actual_params_values:
+            self.actual_params_values[indicator_name] = {}
+
+        for param, value in params.items():
+            if isinstance(value, range):
+                # Select a random value from the range and store it
+                if param not in self.actual_params_values[indicator_name]:
+                    self.actual_params_values[indicator_name][param] = random.choice(value)
+                params[param] = self.actual_params_values[indicator_name][param]  # use the actual stored value
+
+        return params
+    
+    def calculate_and_store_indicator_value(self, indicator_name: str, indicator_func: Callable, params: Dict[str, Any]) -> None:
+        """
+        Calculate and store the indicator value using the provided indicator function and parameters.
+
+        Args:
+            indicator_name (str): Name of the indicator.
+            indicator_func (callable): Function to calculate the indicator.
+            params (dict): Dictionary of parameters to use for the indicator calculation.
+
+        Side Effects:
+            If successful, the calculated indicator value is stored in self.indicator_values dictionary.
+            If an error occurs during the calculation, the error details are printed to the console.
+        """
+        try:
+            # Calculate the indicator value with the determined parameters
+            indicator_value = indicator_func(self.indicator_data, **params)
+        except Exception as e:
+            print(f"Error calculating indicator {indicator_name} with params {params}")
+            print(f"Exception: {e}")
+            return
+        # Store the calculated indicator value
+        self.indicator_values[indicator_name] = indicator_value
                 
-    def select_indicators(self, chosen_indicators):
+    def select_indicators(self, chosen_indicators: List[str]) -> None:
+        """
+        Selects the indicators to be used for trading.
+
+        Args:
+            chosen_indicators: A list of indicators to be used.
+
+        Raises:
+            ValueError: If an unknown indicator is chosen.
+        """
         for indicator_name in chosen_indicators:
             indicator_name = indicator_name.lower()
             if indicator_name not in self.INDICATORS:
@@ -480,9 +775,14 @@ class TradingEnvironment:
             param_range = self.INDICATORS[indicator_name]['params']['period']
             initial_value = random.randint(param_range.start, param_range.stop - 1)
             self.chosen_indicators[indicator_name] = {'period': initial_value}
-        print(f"Debug: chosen_indicators after select_indicators: {self.chosen_indicators}")  # Debug line
    
-    def run_episode(self):
+    def run_episode(self) -> float:
+        """
+        Runs a single episode of the trading process. 
+
+        Returns:
+            The total reward from the episode.
+        """
         self.env.reset()  # reset the environment to its initial state at the start of an episode
         done = False  # flag to track if the episode has ended
         total_reward = 0  # To keep track of total reward in the episode
@@ -501,58 +801,60 @@ class TradingEnvironment:
 
         return total_reward  # return the total reward from the episode
     
-    def buy_asset(self, percentage):
-        # Calculate the total cost based on the percentage of current cash balance
-        cost = self.cash_balance * (percentage / 100)
+    def buy_asset(self, percentage: float) -> None:
+        """
+        Buy an asset given a certain percentage of the current cash balance.
 
-        # Calculate the number of shares that can be bought with this amount of cash
+        Args:
+            percentage: The percentage of the current cash balance to spend on buying shares.
+
+        Returns:
+            None
+        """
+        cost = self.cash_balance * (percentage / 100)
         amount = cost / self.market_state['Close']
 
-        # If the cost is less than or equal to the current cash balance
         if cost <= self.cash_balance:
-            # Subtract the cost from the cash balance
             self.cash_balance -= cost
-
-            # Add the purchased shares to the portfolio
             self.num_shares += amount
-
-            # Update the total trades counter
             self.total_trades += 1
+                    
+    def sell_asset(self, percentage: float) -> None:
+        """
+        Sell an asset given a certain percentage of the current number of shares.
 
-    def sell_asset(self, percentage):
-        # Calculate the number of shares to sell based on the percentage of current number of shares
+        Args:
+            percentage: The percentage of the current number of shares to sell.
+
+        Returns:
+            None
+        """
         amount = self.num_shares * (percentage / 100)
 
-        # If the amount of shares to sell is less than or equal to the number of shares in the portfolio
         if amount <= self.num_shares:
-            # Calculate the proceeds from selling 'amount' shares
             proceeds = self.market_state['Close'] * amount
-
-            # Add the proceeds to the cash balance
             self.cash_balance += proceeds
-
-            # Subtract the sold shares from the portfolio
             self.num_shares -= amount
 
-            # If the selling price is greater than the buying price, increment the winning trades counter
             if self.market_state['Close'] > self.buy_price:  
                 self.winning_trades += 1
 
-            # Update the total trades counter
             self.total_trades += 1
+            print(f'num_shares after selling: {self.num_shares}')
+            print(f'cash_balance after selling: {self.cash_balance}')
 
-    def action_to_vector(self, action):
+    def action_to_vector(self, action: str) -> np.ndarray:
+        """
+        Convert a given action to a vector.
+
+        Args:
+            action: The action to be converted.
+
+        Returns:
+            A numpy array representing the action in a binary vector form.
+        """
         action_space = ['Buy', 'Sell', 'Hold', 'change_indicator_settings', "select_indicators"]
-        action_vector = [0]*len(action_space) # Initialize the vector as all zeros
-        action_index = action_space.index(action) # Get the index of the action
-        action_vector[action_index] = 1 # Set the corresponding index in the vector to 1
-        return np.array([action_vector]) # Convert to numpy array for consistency with your other code
-    
-    def _define_observation_space(self, size):
-            # if your state is a vector of continuous variables, you can represent this
-            # as a list of 'None' with the appropriate length. This signifies that any
-            # real number is an acceptable value in the state vector.
-            return [None] * size
-
-    def _define_action_space(self):
-        return ['buy', 'sell', 'hold', 'change_indicator_settings', 'select_indicators']
+        action_vector = [0]*len(action_space)
+        action_index = action_space.index(action)
+        action_vector[action_index] = 1 
+        return np.array([action_vector])
