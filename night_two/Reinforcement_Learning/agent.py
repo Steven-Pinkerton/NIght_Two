@@ -12,10 +12,11 @@ class DDPGAgent:
     def __init__(self, state_dim, action_dim, max_action, lstm_hidden_dim, num_lstm_layers, dropout_rate, max_buffer_size):
         self.state_dim = state_dim
         self.action_dim = action_dim
+        self.device = device
 
         # Actor Network
-        self.actor_model = Actor(state_dim, action_dim, max_action, lstm_hidden_dim, num_lstm_layers, dropout_rate).to(device)
-        self.target_actor_model = Actor(state_dim, action_dim, max_action, lstm_hidden_dim, num_lstm_layers, dropout_rate).to(device)
+        self.actor_model = Actor(state_dim, action_dim, max_action, lstm_hidden_dim, num_lstm_layers, dropout_rate).to(self.device)
+        self.target_actor_model = Actor(state_dim, action_dim, max_action, lstm_hidden_dim, num_lstm_layers, dropout_rate).to(self.device)
         
         # Initialize target actor model with actor model weights
         self.target_actor_model.load_state_dict(self.actor_model.state_dict())
@@ -46,7 +47,7 @@ class DDPGAgent:
         # Ensure state is a PyTorch tensor
         if not isinstance(state, torch.Tensor):
             print("\nConverting state to a tensor")
-            state = torch.tensor(state, dtype=torch.float32)
+            state = torch.tensor(state, dtype=torch.float32).to(self.device)
 
         print(f"\nAfter conversion - Type of state: {type(state)}")
         print(f"After conversion - Dtype of state: {state.dtype}")
@@ -64,13 +65,8 @@ class DDPGAgent:
 
     def learn(self, batch_size, gamma=0.99, tau=0.005):
         # Get a batch of experiences from the memory buffer
-        state, action, reward, next_state, done = self.replay_buffer.sample(batch_size)
-
-        state = torch.FloatTensor(state)
-        action = torch.FloatTensor(action)
-        reward = torch.FloatTensor(reward).unsqueeze(1)
-        next_state = torch.FloatTensor(next_state)
-        done = torch.FloatTensor(done).unsqueeze(1)
+        experiences = self.replay_buffer.sample(batch_size)
+        state, action, reward, next_state, done = [torch.FloatTensor(t).to(self.device) for t in zip(*experiences)]
 
         # Get predicted next-state actions and Q values from target models
         next_action = self.target_actor_model(next_state)
@@ -122,6 +118,9 @@ class Actor(nn.Module):
         # Define dropout layer
         self.dropout = nn.Dropout(dropout_rate)
         
+        self.bn1 = nn.BatchNorm1d(400)
+        self.bn2 = nn.BatchNorm1d(300)
+        
         # Define fully connected layers
         self.fc1 = nn.Linear(lstm_hidden_dim, 400)
         self.fc2 = nn.Linear(400, 300)
@@ -138,8 +137,8 @@ class Actor(nn.Module):
         # Note: You might need to reshape the LSTM output depending on your PyTorch version
         lstm_out = lstm_out[-1]
         
-        a = F.relu(self.dropout(self.fc1(lstm_out)))
-        a = F.relu(self.dropout(self.fc2(a)))
+        a = F.relu(self.dropout(self.bn1(self.fc1(lstm_out))))
+        a = F.relu(self.dropout(self.bn2(self.fc2(a))))
         a = self.max_action * torch.tanh(self.fc3(a))  # Scale the output to match the action space
         
         return a 
@@ -153,6 +152,9 @@ class Critic(nn.Module):
         
         # Define dropout layer
         self.dropout = nn.Dropout(dropout_rate)
+        
+        self.bn1 = nn.BatchNorm1d(400)
+        self.bn2 = nn.BatchNorm1d(300)
         
         # Define fully connected layers
         self.fc1 = nn.Linear(lstm_hidden_dim, 400)
@@ -171,8 +173,8 @@ class Critic(nn.Module):
         # Note: You might need to reshape the LSTM output depending on your PyTorch version
         lstm_out = lstm_out[-1]
 
-        q = F.relu(self.dropout(self.fc1(lstm_out)))
-        q = F.relu(self.dropout(self.fc2(q)))
+        q = F.relu(self.dropout(self.bn1(self.fc1(lstm_out))))
+        q = F.relu(self.dropout(self.bn2(self.fc2(q))))
         q = self.fc3(q)  # The output is a Q-value, so no activation function is applied at the last layer
 
         return q
