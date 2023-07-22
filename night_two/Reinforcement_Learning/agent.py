@@ -37,7 +37,7 @@ class DDPGAgent:
 
         # Replay Memory
         self.replay_buffer = ReplayBuffer(max_buffer_size)
-
+    
     def get_action(self, state):
         # State is a NumPy array. Convert it to PyTorch tensor for the model.
         print(f"\nBefore conversion - Type of state: {type(state)}")  # Should be <class 'numpy.ndarray'>
@@ -48,6 +48,7 @@ class DDPGAgent:
         if not isinstance(state, torch.Tensor):
             print("\nConverting state to a tensor")
             state = torch.tensor(state, dtype=torch.float32).to(self.device)
+            state = state.unsqueeze(0)  # Add batch dimension
 
         print(f"\nAfter conversion - Type of state: {type(state)}")
         print(f"After conversion - Dtype of state: {state.dtype}")
@@ -55,9 +56,14 @@ class DDPGAgent:
 
         self.actor_model.eval()
         with torch.no_grad():
-            action = self.actor_model(state).numpy()
+            action = self.actor_model(state).cpu().numpy()
         self.actor_model.train()
+
+        if action.shape[0] == 1:  # If only one action was computed, remove the batch dimension
+            action = action.squeeze(0)
+
         return action
+
 
     def act(self, state):
         action = self.actor_model(state)
@@ -107,7 +113,7 @@ class DDPGAgent:
 
     def store_transition(self, state, action, reward, next_state, done):
         self.replay_buffer.add(state, action, reward, next_state, done)
-    
+  
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, max_action, lstm_hidden_dim, num_lstm_layers, dropout_rate):
         super(Actor, self).__init__()
@@ -129,20 +135,18 @@ class Actor(nn.Module):
         self.max_action = max_action
 
     def forward(self, state):
-        # Assume state input is of shape (batch_size, sequence_length, state_dim)
-        # LSTM output shape is (batch_size, sequence_length, hidden_dim)
+        # LSTM output shape is (num_layers, batch_size, hidden_dim)
         _, (lstm_out, _) = self.lstm(state)
         
-        # Use the final hidden state from LSTM output
-        # Note: You might need to reshape the LSTM output depending on your PyTorch version
-        lstm_out = lstm_out[-1]
+        # Use the final hidden state from the last sequence of LSTM output
+        lstm_out = lstm_out[:, -1, :]
         
         a = F.relu(self.dropout(self.bn1(self.fc1(lstm_out))))
         a = F.relu(self.dropout(self.bn2(self.fc2(a))))
         a = self.max_action * torch.tanh(self.fc3(a))  # Scale the output to match the action space
-        
-        return a 
-    
+            
+        return a
+  
 class Critic(nn.Module):
     def __init__(self, state_dim, action_dim, lstm_hidden_dim, num_lstm_layers, dropout_rate):
         super(Critic, self).__init__()
@@ -178,7 +182,7 @@ class Critic(nn.Module):
         q = self.fc3(q)  # The output is a Q-value, so no activation function is applied at the last layer
 
         return q
-    
+ 
 class OUNoise:
     def __init__(self, action_dim, mu=0.0, theta=0.15, max_sigma=0.3, min_sigma=0.3, decay_period=100000):
         self.mu           = mu
@@ -205,7 +209,7 @@ class OUNoise:
         ou_state = self.evolve_state()
         self.sigma = self.max_sigma - (self.max_sigma - self.min_sigma) * min(1.0, t / self.decay_period)
         return action + ou_state
-    
+  
 class ReplayBuffer:
     def __init__(self, max_size):
         self.max_size = max_size
