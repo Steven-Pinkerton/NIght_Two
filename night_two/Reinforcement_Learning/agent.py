@@ -64,28 +64,40 @@ class DDPGAgent:
 
         return action
 
-
     def act(self, state):
         action = self.actor_model(state)
         return self.noise.get_action(action)
 
     def learn(self, batch_size, gamma=0.99, tau=0.005):
+        # Ensure there are enough experiences in the buffer to form a batch
+        if len(self.replay_buffer) < batch_size:
+            return
+
+        print(type(self.replay_buffer))  # Add this line to check the type of self.replay_buffer
+
+
         # Get a batch of experiences from the memory buffer
-        experiences = self.replay_buffer.sample(batch_size)
-        state, action, reward, next_state, done = [torch.FloatTensor(t).to(self.device) for t in zip(*experiences)]
+        states, actions, rewards, next_states, dones = self.replay_buffer.sample(batch_size)
+        
+        # Convert the experiences to PyTorch tensors
+        states = torch.FloatTensor(states).to(self.device)
+        actions = torch.FloatTensor(actions).to(self.device)
+        rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)  # We add an extra dimension to match with Q-values
+        next_states = torch.FloatTensor(next_states).to(self.device)
+        dones = torch.FloatTensor(dones).unsqueeze(1).to(self.device)  # We add an extra dimension to match with Q-values
 
         # Get predicted next-state actions and Q values from target models
-        next_action = self.target_actor_model(next_state)
-        next_q_value = self.target_critic_model(next_state, next_action)
+        next_actions = self.target_actor_model(next_states)
+        next_q_values = self.target_critic_model(next_states, next_actions)
 
-        # Compute the target Q value
-        target_q_value = reward + ((1 - done) * gamma * next_q_value).detach()
+        # Compute the target Q values
+        target_q_values = rewards + ((1 - dones) * gamma * next_q_values).detach()
 
-        # Get expected Q value from critic model
-        expected_q_value = self.critic_model(state, action)
+        # Get expected Q values from critic model
+        expected_q_values = self.critic_model(states, actions)
 
         # Compute Critic loss
-        critic_loss = self.compute_critic_loss(expected_q_value, target_q_value)
+        critic_loss = F.mse_loss(expected_q_values, target_q_values)
 
         # Optimize the critic
         self.critic_optimizer.zero_grad()
@@ -93,7 +105,7 @@ class DDPGAgent:
         self.critic_optimizer.step()
 
         # Compute actor loss
-        actor_loss = -self.critic_model(state, self.actor_model(state)).mean()
+        actor_loss = -self.critic_model(states, self.actor_model(states)).mean()
 
         # Optimize the actor 
         self.actor_optimizer.zero_grad()
@@ -113,6 +125,19 @@ class DDPGAgent:
 
     def store_transition(self, state, action, reward, next_state, done):
         self.replay_buffer.add(state, action, reward, next_state, done)
+        
+    def select_action(self, state, noise=False, t=0):
+        self.actor_model.eval()  # Set the actor network to evaluation mode
+        
+        # Convert numpy array state to PyTorch tensor
+        state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        
+        with torch.no_grad():
+            action = self.actor_model(state)  # Action selection using the actor network
+        self.actor_model.train()  # Set the actor network back to training mode
+        if noise:
+            action = self.noise.get_action(action, t)  # get_action adds noise to the action
+        return action.cpu().data.numpy()
   
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, max_action, lstm_hidden_dim, num_lstm_layers, dropout_rate):
@@ -138,15 +163,23 @@ class Actor(nn.Module):
         # LSTM output shape is (num_layers, batch_size, hidden_dim)
         _, (lstm_out, _) = self.lstm(state)
         
-        # Use the final hidden state from the last sequence of LSTM output
-        lstm_out = lstm_out[:, -1, :]
-        
+        # Check the dimension of the lstm_out tensor
+        if lstm_out.dim() == 3:
+            # Use the final hidden state from the last sequence of LSTM output
+            lstm_out = lstm_out[-1, :, :]
+        elif lstm_out.dim() == 2:
+            # If not a sequence, don't index into the sequence dimension
+            lstm_out = lstm_out[:, :]
+        else:
+            raise ValueError(f"Unexpected output dimension from LSTM: {lstm_out.dim()}")
+
         a = F.relu(self.dropout(self.bn1(self.fc1(lstm_out))))
         a = F.relu(self.dropout(self.bn2(self.fc2(a))))
         a = self.max_action * torch.tanh(self.fc3(a))  # Scale the output to match the action space
             
         return a
-  
+
+    
 class Critic(nn.Module):
     def __init__(self, state_dim, action_dim, lstm_hidden_dim, num_lstm_layers, dropout_rate):
         super(Critic, self).__init__()
@@ -184,7 +217,7 @@ class Critic(nn.Module):
         return q
  
 class OUNoise:
-    def __init__(self, action_dim, mu=0.0, theta=0.15, max_sigma=0.3, min_sigma=0.3, decay_period=100000):
+    def __init__(self, action_dim, mu=0.0, theta=0.15, max_sigma=0.3, min_sigma=0.3, decay_period=100000, rng=None):
         self.mu           = mu
         self.theta        = theta
         self.sigma        = max_sigma
@@ -192,24 +225,30 @@ class OUNoise:
         self.min_sigma    = min_sigma
         self.decay_period = decay_period
         self.action_dim   = action_dim
+        self.rng          = np.random.default_rng() if rng is None else rng
         self.reset()
+        
         
     def reset(self):
         self.state = np.ones(self.action_dim) * self.mu
-        
+
     def evolve_state(self):
         x  = self.state
-        dx = self.theta * (self.mu - x) + self.sigma * np.random.randn(self.action_dim)
+        dx = self.theta * (self.mu - x) + self.sigma * self.rng.standard_normal(self.action_dim)
         self.state = x + dx
         return self.state
     
     def get_action(self, action, t=0):
-        state = state.drop('Date', axis=0)  # drop the 'Date' column
-        state = torch.tensor(state.values, dtype=torch.float32)  # convert to a tensor
         ou_state = self.evolve_state()
         self.sigma = self.max_sigma - (self.max_sigma - self.min_sigma) * min(1.0, t / self.decay_period)
-        return action + ou_state
-  
+        
+        # If action is a tensor, convert to numpy array for the calculation
+        if isinstance(action, torch.Tensor):
+            action = action.cpu().numpy()
+            
+        noisy_action = action + ou_state
+        return torch.tensor(noisy_action, dtype=torch.float32).to(action.device if isinstance(action, torch.Tensor) else 'cpu')
+    
 class ReplayBuffer:
     def __init__(self, max_size):
         self.max_size = max_size
@@ -225,6 +264,10 @@ class ReplayBuffer:
         state, action, reward, next_state, done = zip(*batch)
 
         return state, action, reward, next_state, done
+    
+    
+    def size(self):
+        return len(self.buffer)
 
     def __len__(self):
         return len(self.buffer)
