@@ -1,4 +1,6 @@
 import unittest
+from night_two.Memory.memory_matrix import MemoryMatrix
+
 
 class TestMemoryMatrix(unittest.TestCase):
     
@@ -13,7 +15,7 @@ class TestMemoryMatrix(unittest.TestCase):
         assert not memory.filled_once
         
         
-    def test_write_and_read():
+    def test_write_and_read(self):
         N = 10
         W = 5
         memory = MemoryMatrix(N, W)
@@ -21,7 +23,7 @@ class TestMemoryMatrix(unittest.TestCase):
         memory.write(data)
         assert (memory.read(0) == data).all()
         
-    def test_write_beyond_size():
+    def test_write_beyond_size(self):
         N = 10
         W = 5
         memory = MemoryMatrix(N, W)
@@ -33,7 +35,7 @@ class TestMemoryMatrix(unittest.TestCase):
         assert (memory.read(0) == data2).all()  # the first cell should have been overwritten
 
 
-    def test_has_been_filled():
+    def test_has_been_filled(self):
         N = 10
         W = 5
         memory = MemoryMatrix(N, W)
