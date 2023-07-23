@@ -3,6 +3,6 @@
         "./night_two/data_handling"
         , "./night_two/environment"
         , "./night_two/Reinforcement_Learning"
-        , "./night_two/Memory
+        , "./night_two/Memory"
     ]
 }
