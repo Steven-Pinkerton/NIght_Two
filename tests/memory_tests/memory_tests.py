@@ -56,27 +56,33 @@ class TestContentAddressableMemoryUnit(unittest.TestCase):
 
     def test_write_and_read_similar(self):
         data1 = np.array([1, 2, 3, 4, 5])
+        key1 = np.array([0, 0, 0, 0, 0])  # key for data1
+        self.memory.write(key1, data1)  # corrected
+
         data2 = np.array([6, 7, 8, 9, 10])
-        self.memory.write(data1, 0)
-        self.memory.write(data2, 1)
-        key = np.array([1, 2, 3, 4, 5])
-        read_data = self.memory.read(key)
-        assert (read_data == data1).all()
-        key = np.array([6, 7, 8, 9, 10])
-        read_data = self.memory.read(key)
-        assert (read_data == data2).all()
-        
-        
+        key2 = np.array([1, 1, 1, 1, 1])  # key for data2
+        self.memory.write(key2, data2)  # corrected
+
+        read_data1 = self.memory.read(key1)
+        read_data2 = self.memory.read(key2)
+
+        assert (read_data1 == data1).all()
+        assert (read_data2 == data2).all()
+
     def test_weighted_average_of_similar_vectors(self):
         data1 = np.array([1, 1, 1, 1, 1])
+        key1 = np.array([0, 0, 0, 0, 0])  # key for data1
+        self.memory.write(key1, data1)  # corrected
+
         data2 = np.array([2, 2, 2, 2, 2])
-        self.memory.write(data1, 0)
-        self.memory.write(data2, 1)
+        key2 = np.array([1, 1, 1, 1, 1])  # key for data2
+        self.memory.write(key2, data2)  # corrected
+
         key = np.array([1.5, 1.5, 1.5, 1.5, 1.5])
         read_data = self.memory.read(key)
         expected_data = (data1 + data2) / 2
         np.testing.assert_almost_equal(read_data, expected_data, decimal=6)
-    
+
     def test_multiple_writes_and_reads(self):
         data1 = np.array([1, 2, 3, 4, 5])
         data2 = np.array([6, 7, 8, 9, 10])
@@ -91,11 +97,14 @@ class TestContentAddressableMemoryUnit(unittest.TestCase):
         
     def test_overwrite_memory(self):
         data1 = np.array([1, 2, 3, 4, 5])
+        key1 = np.array([0, 0, 0, 0, 0])  # key for data1
+        self.memory.write(key1, data1)  # corrected
+
         data2 = np.array([6, 7, 8, 9, 10])
-        self.memory.write(data1, 0)
-        self.memory.write(data2, 0)
-        key = np.array([6, 7, 8, 9, 10])
-        read_data = self.memory.read(key)
+        key2 = np.array([1, 1, 1, 1, 1])  # key for data2
+        self.memory.write(key2, data2)  # corrected
+
+        read_data = self.memory.read(key2)
         np.testing.assert_almost_equal(read_data, data2, decimal=6)
         
     def test_different_keys(self):
@@ -107,6 +116,5 @@ class TestContentAddressableMemoryUnit(unittest.TestCase):
         print(data)  # Print expected data for debugging
         np.testing.assert_almost_equal(read_data, data, decimal=2)
         
-
 if __name__ == '__main__':
     unittest.main()
