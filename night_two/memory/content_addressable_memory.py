@@ -10,41 +10,22 @@ class ContentAddressableMemoryUnit(MemoryUnit):
         # Initialize memory as a matrix of zeros with shape (N, W)
         self.memory = np.zeros((N, W))  
 
-    def write(self, data: np.ndarray, address: int) -> None:
-        """
-        Write data into memory at the specified address.
-
-        Args:
-            data: The data to be written into memory. It must be a 1D numpy array of size W.
-            address: The integer address at which to write the data.
-        """
-        # Check that the data is the right shape
+    def write(self, key: np.ndarray, data: np.ndarray):
+        if not isinstance(key, np.ndarray):
+            raise TypeError(f"Key must be a numpy array, but got {type(key).__name__}")
+        if not isinstance(data, np.ndarray):
+            raise TypeError(f"Data must be a numpy array, but got {type(data).__name__}")
+        assert key.shape == (self.W,), "Key must be a 1D numpy array of size W"
         assert data.shape == (self.W,), "Data must be a 1D numpy array of size W"
-        # Write the data to the specified address
-        self.memory[address] = data
+        similarities = np.dot(self.memory, key) / np.sqrt(self.W) + 1e-9  # Add small constant
+        weights = np.exp(similarities) / np.sum(np.exp(similarities))  # Get weights
+        print(weights)  # Print weights for debugging
+        self.memory = 1 / (1 + np.exp(-self.memory + np.outer(weights, data)))  # Use sigmoid instead of tanh
+        return weights
 
     def read(self, key: np.ndarray) -> np.ndarray:
-        """
-        Read data from memory based on the content.
-
-        Args:
-            key: The query key. It must be a 1D numpy array of size W.
-
-        Returns:
-            A 1D numpy array of size W, which represents the data read from memory based on the key.
-        """
-        # Check that the key is the right shape
         assert key.shape == (self.W,), "Key must be a 1D numpy array of size W"
-        # Compute the L2 norm of the key
-        key_norm = np.linalg.norm(key) + 1e-10  # Add small constant to prevent division by zero
-        # Normalize the key by dividing each component by the norm
-        key = key / key_norm
-        # Compute the L2 norms of the memory vectors
-        memory_norm = np.linalg.norm(self.memory, axis=1) + 1e-10  # Normalize, prevent division by zero
-        # Compute cosine similarities between the key and each memory cell by taking the dot product
-        # of the normalized memory vectors and the normalized key
-        similarities = np.dot(self.memory / memory_norm[:, None], key)
-        # Compute softmax weights based on the similarities
+        similarities = np.dot(self.memory, key) / np.sqrt(self.W) + 1e-9  # Add small constant
         weights = np.exp(similarities) / np.sum(np.exp(similarities))
-        # Return a weighted sum of memory contents as the output, which is a form of content-based addressing
+        print(weights)  # Print weights for debugging
         return np.dot(weights, self.memory)
