@@ -7,7 +7,7 @@ from night_two.memory.memory_matrix import MemoryMatrix
 class TestMemoryMatrix(unittest.TestCase):
     
     
-    def test_initialization():
+    def test_initialization(self):
         N = 10
         W = 5
         memory = MemoryMatrix(N, W)

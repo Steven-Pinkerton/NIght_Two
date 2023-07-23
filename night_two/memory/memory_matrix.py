@@ -1,5 +1,6 @@
 import numpy as np
-from memory_unit import MemoryUnit
+from night_two.memory.memory_unit import MemoryUnit
+
 
 
 class MemoryMatrix(MemoryUnit):
@@ -9,6 +10,7 @@ class MemoryMatrix(MemoryUnit):
         self.W = W  # size of memory vectors
         self.matrix = np.zeros((N, W))  # initialize matrix with zeros
         self.current_address = 0  # pointer to the current memory cell
+        self.filled_once = False  # flag to check if memory has been filled at least once
 
     def write(self, data: np.ndarray) -> None:
         """
@@ -22,6 +24,8 @@ class MemoryMatrix(MemoryUnit):
 
         # Move the address pointer to the next cell, or back to the start if we've reached the end
         self.current_address = (self.current_address + 1) % self.N
+        if self.current_address == 0:  # if we have looped back to the start, we have filled the memory once
+            self.filled_once = True
 
     def read(self, address: int) -> np.ndarray:
         """

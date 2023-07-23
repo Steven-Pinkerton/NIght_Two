@@ -3,7 +3,8 @@ import numpy as np
 
 class MemoryUnit:
     def __init__(self):
-        raise NotImplementedError("MemoryUnit is a base class and should not be instantiated directly")
+          if type(self) is MemoryUnit:
+            raise NotImplementedError("MemoryUnit is a base class and should not be instantiated directly")
 
     def write(self, data):
         """
