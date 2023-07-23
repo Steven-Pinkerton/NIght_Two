@@ -1,5 +1,7 @@
 import unittest
-from night_two.Memory.memory_matrix import MemoryMatrix
+
+import numpy as np
+from night_two.memory.memory_matrix import MemoryMatrix
 
 
 class TestMemoryMatrix(unittest.TestCase):
