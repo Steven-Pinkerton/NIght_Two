@@ -1,12 +1,9 @@
 import unittest
-
 import numpy as np
 from night_two.memory.memory_matrix import MemoryMatrix
 
-
 class TestMemoryMatrix(unittest.TestCase):
-    
-    
+
     def test_initialization(self):
         N = 10
         W = 5
@@ -15,7 +12,6 @@ class TestMemoryMatrix(unittest.TestCase):
         assert (memory.matrix == np.zeros((N, W))).all()
         assert memory.current_address == 0
         assert not memory.filled_once
-        
         
     def test_write_and_read(self):
         N = 10
@@ -35,7 +31,6 @@ class TestMemoryMatrix(unittest.TestCase):
             memory.write(data1)
         memory.write(data2)
         assert (memory.read(0) == data2).all()  # the first cell should have been overwritten
-
 
     def test_has_been_filled(self):
         N = 10

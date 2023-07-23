@@ -27,56 +27,6 @@ class MemoryUnit:
         """
         raise NotImplementedError("The read method should be implemented by subclasses")
 
-class ContentAddressableMemoryUnit(MemoryUnit):
-    def __init__(self):
-        self.memory = {}
-
-    def write(self, data, address):
-        """
-        Write data into memory at the specified address.
-
-        Args:
-            data: The data to be written into memory.
-            address: The address at which to write the data.
-        """
-        self.memory[address] = data
-
-    def read(self, address):
-        """
-        Read data from memory at the specified address.
-
-        Args:
-            address: The address in memory from which to read data.
-
-        Returns:
-            The data read from memory at the specified address.
-        """
-        return self.memory.get(address)
-
-class TemporalLinkageMemoryUnit(MemoryUnit):
-    def __init__(self):
-        self.memory = []
-        
-    def write(self, data):
-        """
-        Append data to the end of the memory list.
-
-        Args:
-            data: The data to be written into memory.
-        """
-        self.memory.append(data)
-
-    def read(self, index):
-        """
-        Read data from memory at the specified index.
-
-        Args:
-            index: The index in memory from which to read data.
-
-        Returns:
-            The data read from memory at the specified index.
-        """
-        return self.memory[index] if index < len(self.memory) else None
 
 class ReadHead(MemoryUnit):
     def __init__(self):
