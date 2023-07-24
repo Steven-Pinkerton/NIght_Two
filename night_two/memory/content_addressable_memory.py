@@ -8,24 +8,33 @@ class ContentAddressableMemoryUnit(MemoryUnit):
         self.N = N  # number of memory cells
         self.W = W  # size of memory vectors
         # Initialize memory as a matrix of zeros with shape (N, W)
-        self.memory = np.zeros((N, W))  
+        self.memory = np.zeros((N, W))
+        self.keys = np.zeros((N, W))  # Store keys separately
+        self.counter = 0  # Counter for the next free cell
 
     def write(self, key: np.ndarray, data: np.ndarray):
-        if not isinstance(key, np.ndarray):
-            raise TypeError(f"Key must be a numpy array, but got {type(key).__name__}")
-        if not isinstance(data, np.ndarray):
-            raise TypeError(f"Data must be a numpy array, but got {type(data).__name__}")
         assert key.shape == (self.W,), "Key must be a 1D numpy array of size W"
         assert data.shape == (self.W,), "Data must be a 1D numpy array of size W"
-        similarities = np.dot(self.memory, key) / np.sqrt(self.W) + 1e-9  # Add small constant
-        weights = np.exp(similarities) / np.sum(np.exp(similarities))  # Get weights
-        print(weights)  # Print weights for debugging
-        self.memory = 1 / (1 + np.exp(-self.memory + np.outer(weights, data)))  # Use sigmoid instead of tanh
-        return weights
+        
+        # Use a free cell or overwrite the oldest one
+        idx = self.counter % self.N
+
+        # Update the corresponding memory cell
+        self.memory[idx] = data
+        self.keys[idx] = key  # Save the key
+
+        print(f"Wrote data {data} with key {key} at index {idx}")
+
+        self.counter += 1
 
     def read(self, key: np.ndarray) -> np.ndarray:
         assert key.shape == (self.W,), "Key must be a 1D numpy array of size W"
-        similarities = np.dot(self.memory, key) / np.sqrt(self.W) + 1e-9  # Add small constant
-        weights = np.exp(similarities) / np.sum(np.exp(similarities))
-        print(weights)  # Print weights for debugging
-        return np.dot(weights, self.memory)
+        
+        # Find the key with the maximum similarity to the input key
+        similarities = np.dot(self.keys, key) / np.sqrt(self.W)
+        idx = np.argmax(similarities)
+
+        # Return the corresponding memory cell
+        read_data = self.memory[idx]
+        print(f"Read data {read_data} with key {self.keys[idx]} at index {idx}")
+        return read_data

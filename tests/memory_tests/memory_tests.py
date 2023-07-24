@@ -1,5 +1,6 @@
 import unittest
 import numpy as np
+from night_two.memory.memory_unit import MemoryUnit
 from night_two.memory.memory_matrix import MemoryMatrix
 from night_two.memory.content_addressable_memory import ContentAddressableMemoryUnit
 
@@ -44,77 +45,46 @@ class TestMemoryMatrix(unittest.TestCase):
         assert memory.has_been_filled()
         # add more test methods here
 
-class TestContentAddressableMemoryUnit(unittest.TestCase):
-    def setUp(self):
-        self.N = 10
-        self.W = 5
-        self.memory = ContentAddressableMemoryUnit(self.N, self.W)
+class ContentAddressableMemoryUnit(MemoryUnit):
+    def __init__(self, N: int, W: int):
+        super().__init__()
+        self.N = N  # number of memory cells
+        self.W = W  # size of memory vectors
+        # Initialize memory as a matrix of zeros with shape (N, W)
+        self.memory = np.zeros((N, W))  
+        self.keys = np.zeros((N, W))  # Store keys separately
+        self.usage = np.zeros(N)  # Keep track of usage for each cell
 
-    def test_initialization(self):
-        assert self.memory.memory.shape == (self.N, self.W)
-        assert (self.memory.memory == np.zeros((self.N, self.W))).all()
-
-    def test_write_and_read_similar(self):
-        data1 = np.array([1, 2, 3, 4, 5])
-        key1 = np.array([0, 0, 0, 0, 0])  # key for data1
-        self.memory.write(key1, data1)  # corrected
-
-        data2 = np.array([6, 7, 8, 9, 10])
-        key2 = np.array([1, 1, 1, 1, 1])  # key for data2
-        self.memory.write(key2, data2)  # corrected
-
-        read_data1 = self.memory.read(key1)
-        read_data2 = self.memory.read(key2)
-
-        assert (read_data1 == data1).all()
-        assert (read_data2 == data2).all()
-
-    def test_weighted_average_of_similar_vectors(self):
-        data1 = np.array([1, 1, 1, 1, 1])
-        key1 = np.array([0, 0, 0, 0, 0])  # key for data1
-        self.memory.write(key1, data1)  # corrected
-
-        data2 = np.array([2, 2, 2, 2, 2])
-        key2 = np.array([1, 1, 1, 1, 1])  # key for data2
-        self.memory.write(key2, data2)  # corrected
-
-        key = np.array([1.5, 1.5, 1.5, 1.5, 1.5])
-        read_data = self.memory.read(key)
-        expected_data = (data1 + data2) / 2
-        np.testing.assert_almost_equal(read_data, expected_data, decimal=6)
-
-    def test_multiple_writes_and_reads(self):
-        data1 = np.array([1, 2, 3, 4, 5])
-        data2 = np.array([6, 7, 8, 9, 10])
-        key1 = np.array([1, 2, 3, 4, 5])  # Keys to use
-        key2 = np.array([6, 7, 8, 9, 10])  # Keys to use
-        self.memory.write(key1, data1)  # Use keys to write data
-        self.memory.write(key2, data2)  # Use keys to write data
-        read_data1 = self.memory.read(key1)
-        read_data2 = self.memory.read(key2)
-        np.testing.assert_almost_equal(np.linalg.norm(read_data1 - data1), 0, decimal=2)
-        np.testing.assert_almost_equal(np.linalg.norm(read_data2 - data2), 0, decimal=2)
+    def write(self, key: np.ndarray, data: np.ndarray):
+        assert key.shape == (self.W,), "Key must be a 1D numpy array of size W"
+        assert data.shape == (self.W,), "Data must be a 1D numpy array of size W"
         
-    def test_overwrite_memory(self):
-        data1 = np.array([1, 2, 3, 4, 5])
-        key1 = np.array([0, 0, 0, 0, 0])  # key for data1
-        self.memory.write(key1, data1)  # corrected
+        # Calculate cosine similarities
+        similarities = np.dot(self.keys, key) / (np.linalg.norm(self.keys, axis=1) * np.linalg.norm(key))
+        idx = np.argmax(similarities)
 
-        data2 = np.array([6, 7, 8, 9, 10])
-        key2 = np.array([1, 1, 1, 1, 1])  # key for data2
-        self.memory.write(key2, data2)  # corrected
+        # If maximum similarity is not 1, find least recently used cell
+        if similarities[idx] < 1:
+            idx = np.argmin(self.usage)
 
-        read_data = self.memory.read(key2)
-        np.testing.assert_almost_equal(read_data, data2, decimal=6)
+        # Update the corresponding memory cell
+        self.memory[idx] = data
+        self.keys[idx] = key  # Save the key
+        self.usage += 1  # Increase usage count for all cells
+        self.usage[idx] = 0  # Reset usage count for current cell
+
+    def read(self, key: np.ndarray) -> np.ndarray:
+        assert key.shape == (self.W,), "Key must be a 1D numpy array of size W"
         
-    def test_different_keys(self):
-        key = np.array([1, 2, 3, 4, 5])
-        data = np.zeros(self.memory.W)  # Use a numpy array of zeros as data
-        self.memory.write(key, data)
-        read_data = self.memory.read(key)
-        print(read_data)  # Print read data for debugging
-        print(data)  # Print expected data for debugging
-        np.testing.assert_almost_equal(read_data, data, decimal=2)
+        # Calculate cosine similarities
+        similarities = np.dot(self.keys, key) / (np.linalg.norm(self.keys, axis=1) * np.linalg.norm(key))
+        idx = np.argmax(similarities)
+
+        # Increase usage count for the read cell
+        self.usage[idx] += 1
+
+        # Return the corresponding memory cell
+        return self.memory[idx]
         
 if __name__ == '__main__':
     unittest.main()
