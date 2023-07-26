@@ -1,7 +1,10 @@
+import os
 import unittest
 import numpy as np
+import pytest
 from night_two.memory.memory_matrix import MemoryMatrix
 from night_two.memory.content_addressable_memory import ContentAddressableMemoryUnit
+from night_two.memory.temporal_linkage_matrix import TemporalLinkageMemoryUnit
 
 class TestMemoryMatrix(unittest.TestCase):
 
@@ -133,6 +136,52 @@ class TestMemoryMatrix(unittest.TestCase):
     #    print(read_data)  # Print read data for debugging
    #     print(data)  # Print expected data for debugging
   #      np.testing.assert_almost_equal(read_data, data, decimal=2)
-        
+  
+class TestTemporalLinkageMemoryUnit:
+    @pytest.fixture
+    def setup_memory_unit(self):
+        capacity = 5
+        memory_unit = TemporalLinkageMemoryUnit(capacity)
+        for i in range(capacity):
+            memory_unit.write([np.array([i])])
+        return memory_unit
+
+    def test_capacity(self, setup_memory_unit):
+        assert len(setup_memory_unit.memory) == setup_memory_unit.capacity
+        setup_memory_unit.write([np.array([5])])
+        assert len(setup_memory_unit.memory) == setup_memory_unit.capacity
+        assert setup_memory_unit.memory[0][0][0] == 1
+
+    def test_write(self, setup_memory_unit):
+        with pytest.raises(TypeError):
+            setup_memory_unit.write("Not a list")
+        with pytest.raises(TypeError):
+            setup_memory_unit.write([1, 2, 3])
+
+    def test_read(self, setup_memory_unit):
+        episode = setup_memory_unit.read(2)
+        assert episode[0][0] == 2
+        with pytest.raises(IndexError):
+            setup_memory_unit.read(-1)
+        with pytest.raises(IndexError):
+            setup_memory_unit.read(setup_memory_unit.capacity)
+
+    def test_predecessor_successor(self, setup_memory_unit):
+        assert setup_memory_unit.predecessor(0) is None
+        assert setup_memory_unit.successor(setup_memory_unit.capacity - 1) is None
+        assert setup_memory_unit.predecessor(2)[0][0] == 1
+        assert setup_memory_unit.successor(2)[0][0] == 3
+
+    def test_save_load(self, setup_memory_unit):
+        filename = "test_memory.pkl"
+        setup_memory_unit.save(filename)
+        assert os.path.exists(filename)
+        new_memory_unit = TemporalLinkageMemoryUnit(setup_memory_unit.capacity)
+        new_memory_unit.load(filename)
+        for i in range(setup_memory_unit.capacity):
+            assert setup_memory_unit.read(i)[0][0] == new_memory_unit.read(i)[0][0]
+        os.remove(filename)
+
+
 if __name__ == '__main__':
     unittest.main()
