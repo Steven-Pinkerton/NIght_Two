@@ -2,7 +2,7 @@ import pickle
 from typing import List, Optional
 
 import numpy as np
-from memory.memory_unit import MemoryUnit
+from night_two.memory.memory_unit import MemoryUnit
 
 class TemporalLinkageMemoryUnit(MemoryUnit):
     def __init__(self, capacity: int):
