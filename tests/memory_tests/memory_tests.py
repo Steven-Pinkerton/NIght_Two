@@ -1,10 +1,12 @@
 import os
 import unittest
 import numpy as np
+import tensorflow as tf
+from tensorflow.keras.layers import LSTM
 from night_two.memory.memory_matrix import MemoryMatrix
 from night_two.memory.content_addressable_memory import ContentAddressableMemoryUnit
 from night_two.memory.temporal_linkage_matrix import TemporalLinkageMemoryUnit
-from night_two.memory.dnc_memory import ReadHead, WriteHead, DNC
+from night_two.memory.dnc_memory import ContentAddressableDNC, ReadHead, WriteHead, DNC
 
 class TestMemoryMatrix(unittest.TestCase):
 
@@ -166,6 +168,9 @@ class TestDNCModel(unittest.TestCase):
         # Create a mock input tensor
         inputs = tf.random.normal((1, 10))
 
+        # Add a time dimension to the inputs
+        inputs = tf.expand_dims(inputs, 1)
+
         # Perform a step of DNC
         read_vectors = self.dnc(inputs)
 
@@ -174,7 +179,30 @@ class TestDNCModel(unittest.TestCase):
 
         # Check that each read vector has the correct shape
         for read_vector in read_vectors:
-            self.assertEqual(read_vector.shape, (5,))
+            self.assertEqual(read_vector.shape, (1, 5))
+
+class TestContentAddressableDNC(unittest.TestCase):
+    
+    def setUp(self):
+        self.model = ContentAddressableDNC(controller_size=128, memory_size=20, num_read_heads=2, num_write_heads=2, capacity=100)
+
+    def test_controller(self):
+        self.assertIsInstance(self.model.controller, LSTM)
+
+    def test_memory_initialization(self):
+        self.assertEqual(self.model.memory.shape, (20, 20))
+        
+    def test_read_heads(self):
+        self.assertEqual(len(self.model.read_heads), 2)
+
+    def test_write_heads(self):
+        self.assertEqual(len(self.model.write_heads), 2)
+
+    def test_model_output_shape(self):
+        input_data = tf.random.normal((1, 10, 128))  # batch_size, sequence_length, input_dim
+        output_data = self.model(input_data)
+        self.assertEqual(output_data.shape, (1, 10, 128))  # batch_size, sequence_length, output_dim
+
 
 
 if __name__ == '__main__':
