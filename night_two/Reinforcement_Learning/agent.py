@@ -124,6 +124,13 @@ class DDPGAgent:
             target_param.data.copy_(tau*local_param.data + (1.0-tau)*target_param.data)
 
     def store_transition(self, state, action, reward, next_state, done):
+        print("\nStoring transition")
+        print(f"State: {state}, Type: {type(state)}, Shape: {state.shape}")
+        print(f"Action: {action}, Type: {type(action)}, Shape: {action.shape}")
+        print(f"Reward: {reward}, Type: {type(reward)}")
+        print(f"Next State: {next_state}, Type: {type(next_state)}, Shape: {next_state.shape}")
+        print(f"Done: {done}, Type: {type(done)}")
+
         self.replay_buffer.add(state, action, reward, next_state, done)
         
     def select_action(self, state, noise=False, t=0):
@@ -255,6 +262,13 @@ class ReplayBuffer:
         self.buffer = deque(maxlen=max_size)
 
     def add(self, state, action, reward, next_state, done):
+        print("\nAdding to ReplayBuffer")
+        print(f"State: {state}, Type: {type(state)}, Shape: {state.shape}")
+        print(f"Action: {action}, Type: {type(action)}, Shape: {action.shape}")
+        print(f"Reward: {reward}, Type: {type(reward)}")
+        print(f"Next State: {next_state}, Type: {type(next_state)}, Shape: {next_state.shape}")
+        print(f"Done: {done}, Type: {type(done)}")
+
         experience = (state, action, reward, next_state, done)
         self.buffer.append(experience)
 

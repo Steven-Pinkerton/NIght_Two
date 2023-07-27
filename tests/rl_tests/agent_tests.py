@@ -51,8 +51,8 @@ class TestOUNoise(unittest.TestCase):
         
     def test_noise_addition(self):
         self.noise.reset()
-        noise = self.noise.evolve_state()
-        expected_noisy_action = self.action + noise
+        t = 0  # consider a suitable timestep
+        expected_noisy_action = self.noise.get_action(self.action, t=t)
         actual_noisy_action = self.agent.select_action(self.state, noise=True)
 
         # Check if the noise is within the expected range
