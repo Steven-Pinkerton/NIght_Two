@@ -1,65 +1,85 @@
 import time
+from typing import Any, List
 import numpy as np
 from night_two.memory.memory_unit import MemoryUnit
 
-
-
 class ContentAddressableMemoryUnit(MemoryUnit):
-    def __init__(self, N: int, W: int):
+    def __init__(self, capacity: int):
+        """
+        Initialize a memory structure for episodes.
+
+        Args:
+            capacity: The maximum number of episodes that can be stored in memory.
+        """
         super().__init__()
-        self.N = N  # number of memory cells
-        self.W = W  # size of memory vectors
-        self.memory = np.zeros((N, W))
-        self.keys = np.zeros((N, W))
-        self.usage = np.full(N, np.inf)  # Unused cells have usage set to infinity
-        self.timestamp = np.zeros(N)  # New attribute to store timestamps
+        self.capacity = capacity
+        self.memory = []
+        self.content_index = {}
 
-    def write(self, key: np.ndarray, data: np.ndarray):
-        assert key.shape == (self.W,), "Key must be a 1D numpy array of size W"
-        assert data.shape == (self.W,), "Data must be a 1D numpy array of size W"
+    def write(self, episode: List[np.ndarray]) -> None:
+        """
+        Write a new episode into memory. If memory is full, remove the oldest episode.
 
-        match_idx = np.where(np.all(np.isclose(self.keys, key), axis=1))
-        if match_idx[0].size > 0:
-            idx = match_idx[0][0]
-        else:
-            idx = np.argmin(self.timestamp)  # Here, we're prioritizing overwriting the oldest cell
+        Args:
+            episode: The episode to be written into memory, represented as a list of numpy arrays.
+        """
+        if len(self.memory) == self.capacity:
+            removed_episode = self.memory.pop(0)
+            removed_content = self._generate_content_key(removed_episode)
+            del self.content_index[removed_content]
 
-        self.keys[idx] = key
-        self.memory[idx] = data
-        self.usage[idx] = 0
-        self.timestamp[idx] = time.time()  # Here, we're updating the timestamp
+        self.memory.append(episode)
+        content = self._generate_content_key(episode)
+        if content in self.content_index:
+            raise ValueError("An episode with the same content already exists in memory")
+        self.content_index[content] = episode
 
-        print(f"Writing data {data} with key {key} at index {idx}")
+    def read(self, index: int) -> List[np.ndarray]:
+        """
+        Read an episode from memory at the specified index.
 
-    def read(self, key: np.ndarray) -> np.ndarray:
-        assert key.shape == (self.W,), "Key must be a 1D numpy array of size W"
+        Args:
+            index: The index in memory from which to read the episode.
 
-        print(f"Reading data for key: {key}")
+        Returns:
+            The episode read from memory at the specified index, represented as a list of numpy arrays.
 
-        # Here, we're computing the Euclidean distances between the provided key and all the keys in memory
-        euclidean_distances = np.linalg.norm(self.keys - key, axis=1)
+        Raises:
+            IndexError: If the index is out of bounds of the memory.
+        """
+        if index < 0 or index >= len(self.memory):
+            raise IndexError("Memory index out of bounds")
+        return self.memory[index]
 
-        # Here, we're computing similarities as inverses of non-zero Euclidean distances
-        similarities = np.zeros(self.N)
-        non_zero_indices = euclidean_distances != 0
-        zero_indices = euclidean_distances == 0
-        similarities[non_zero_indices] = 1 / euclidean_distances[non_zero_indices]
-        similarities[zero_indices] = np.inf
+    def retrieve(self, content: Any) -> List[np.ndarray]:
+        """
+        Retrieve an episode from memory based on the associated content.
 
-        # If exact match found, return that value directly
-        if np.any(zero_indices):
-            idx = np.where(zero_indices)[0][0]
-            print(f"Exact match found: {self.memory[idx]}")
-            return self.memory[idx]
-        else:
-            # Here, we're normalizing the similarities to sum to 1
-            total = np.sum(similarities)
-            epsilon = 1e-10
-            weights = similarities / (total + epsilon)
-            print(f"Weights: {weights}")
+        Args:
+            content: The content associated with the episode to retrieve.
 
-            # Here, we're computing the weighted average
-            weighted_average = np.average(self.memory, axis=0, weights=weights) 
-            print(f"Weighted average: {weighted_average}")
+        Returns:
+            The episode associated with the content, represented as a list of numpy arrays.
 
-            return weighted_average
+        Raises:
+            KeyError: If no episode is associated with the content.
+        """
+        content_key = self._generate_content_key(content)
+        if content_key not in self.content_index:
+            raise KeyError(f"No episode associated with content {content}")
+        return self.content_index[content_key]
+
+    def _generate_content_key(self, content: Any) -> str:
+        """
+        Generate a string representation of the content that can be used as a dictionary key.
+
+        Args:
+            content: The content to be converted into a string.
+
+        Returns:
+            A string representation of the content.
+        """
+        print(f"Content: {content}")
+        flattened_content = [item for sublist in content for item in sublist]
+        print(f"Flattened content: {flattened_content}")
+        return str(flattened_content)

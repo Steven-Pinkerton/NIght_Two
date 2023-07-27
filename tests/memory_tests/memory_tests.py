@@ -91,5 +91,39 @@ class TestTemporalLinkageMemoryUnit(unittest.TestCase):
             assert self.memory_unit.read(i)[0][0] == new_memory_unit.read(i)[0][0]
         os.remove(filename)
 
+class TestContentAddressableMemoryUnit(unittest.TestCase):
+    
+    def setUp(self):
+        self.capacity = 5
+        self.memory_unit = ContentAddressableMemoryUnit(self.capacity)
+        for i in range(self.capacity):
+            self.memory_unit.write([np.array([i])])
+
+    def test_capacity(self):
+        assert len(self.memory_unit.memory) == self.memory_unit.capacity
+        self.memory_unit.write([np.array([5])])
+        assert len(self.memory_unit.memory) == self.memory_unit.capacity
+        assert np.array_equal(self.memory_unit.memory[0][0], np.array([1]))
+
+    def test_write_read(self):
+        episode = [np.array([6])]
+        self.memory_unit.write(episode)
+        read_episode = self.memory_unit.read(self.capacity - 1)
+        assert np.array_equal(read_episode[0], episode[0])
+
+    def test_duplicate_content(self):
+        episode = [np.array([6])]
+        with self.assertRaises(ValueError):
+            self.memory_unit.write(episode)
+            self.memory_unit.write(episode)  # Duplicate write should raise ValueError
+
+    def test_retrieve(self):
+        episode = [np.array([7])]
+        self.memory_unit.write(episode)
+        retrieved_episode = self.memory_unit.retrieve([np.array([7])])  # Pass np.array([7]) instead of [7]
+        assert np.array_equal(retrieved_episode[0], episode[0])
+        with self.assertRaises(KeyError):
+            self.memory_unit.retrieve([np.array([100])])  # Pass np.array([100]) instead of [100]
+
 if __name__ == '__main__':
     unittest.main()
