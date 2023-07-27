@@ -1,10 +1,10 @@
 import os
 import unittest
 import numpy as np
-import pytest
 from night_two.memory.memory_matrix import MemoryMatrix
 from night_two.memory.content_addressable_memory import ContentAddressableMemoryUnit
 from night_two.memory.temporal_linkage_matrix import TemporalLinkageMemoryUnit
+from night_two.memory.dnc_memory import ReadHead, WriteHead, DNC
 
 class TestMemoryMatrix(unittest.TestCase):
 
@@ -124,6 +124,58 @@ class TestContentAddressableMemoryUnit(unittest.TestCase):
         assert np.array_equal(retrieved_episode[0], episode[0])
         with self.assertRaises(KeyError):
             self.memory_unit.retrieve([np.array([100])])  # Pass np.array([100]) instead of [100]
+
+class TestDNCModel(unittest.TestCase):
+    def setUp(self):
+        # Initialize a DNC model
+        self.dnc = DNC(10, 5, 1, 1)
+
+    def test_read_head(self):
+        # Initialize a read head with a memory size of 5
+        read_head = ReadHead(5)
+
+        # Create a mock memory matrix
+        memory = tf.random.normal((5, 5))
+
+        # Create a mock controller output
+        controller_output = tf.random.normal((1, 10))
+
+        # Perform a read operation
+        read_vector = read_head(memory, controller_output)
+
+        # Check that the read vector has the correct shape
+        self.assertEqual(read_vector.shape, (5,))
+
+    def test_write_head(self):
+        # Initialize a write head with a memory size of 5
+        write_head = WriteHead(5)
+
+        # Create a mock memory matrix
+        memory = tf.random.normal((5, 5))
+
+        # Create a mock controller output
+        controller_output = tf.random.normal((1, 10))
+
+        # Perform a write operation
+        new_memory = write_head(memory, controller_output)
+
+        # Check that the new memory matrix has the correct shape
+        self.assertEqual(new_memory.shape, (5, 5))
+
+    def test_dnc(self):
+        # Create a mock input tensor
+        inputs = tf.random.normal((1, 10))
+
+        # Perform a step of DNC
+        read_vectors = self.dnc(inputs)
+
+        # Check that the correct number of read vectors is returned
+        self.assertEqual(len(read_vectors), self.dnc.num_read_heads)
+
+        # Check that each read vector has the correct shape
+        for read_vector in read_vectors:
+            self.assertEqual(read_vector.shape, (5,))
+
 
 if __name__ == '__main__':
     unittest.main()
