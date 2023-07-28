@@ -110,8 +110,6 @@ class WriteHead(tf.keras.layers.Layer):
 
         return memory
 
-
-
 class ContentAddressableReadHead(ReadHead):
     def __init__(self, memory_size: int, num_memory_slots: int):
         super().__init__(memory_size)
@@ -187,7 +185,6 @@ class ContentAddressableWriteHead(WriteHead):
         memory = (1 - write_weights * erase_vector[..., tf.newaxis]) * memory + write_weights * add_vector[..., tf.newaxis]
 
         return memory
-
 
 class ContentAddressableDNC(Model):
     def __init__(self, controller_size=128, memory_size=20, num_read_heads=2, num_write_heads=2, num_memory_slots=100, capacity=100, **kwargs):
