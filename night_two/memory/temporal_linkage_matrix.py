@@ -1,7 +1,6 @@
-import pickle
 from typing import List, Optional
 
-import numpy as np
+import torch
 from night_two.memory.memory_unit import MemoryUnit
 
 class TemporalLinkageMemoryUnit(MemoryUnit):
@@ -16,23 +15,23 @@ class TemporalLinkageMemoryUnit(MemoryUnit):
         self.memory = []
         self.capacity = capacity
 
-    def write(self, episode: List[np.ndarray]) -> None:
+    def write(self, episode: List[torch.Tensor]) -> None:
         """
         Write a new episode into memory. If memory is full, remove the oldest episode.
 
         Args:
-            episode: The episode to be written into memory, represented as a list of numpy arrays.
+            episode: The episode to be written into memory, represented as a list of Tensors.
         """
         if not isinstance(episode, list):
             raise TypeError(f"Expected a list, but got {type(episode)}")
-        if not all(isinstance(x, np.ndarray) for x in episode):
-            raise TypeError("All items in the episode should be numpy arrays")
+        if not all(isinstance(x, torch.Tensor) for x in episode):
+            raise TypeError("All items in the episode should be Tensors")
 
         if len(self.memory) == self.capacity:
             self.memory.pop(0)
         self.memory.append(episode)
 
-    def read(self, index: int) -> List[np.ndarray]:
+    def read(self, index: int) -> List[torch.Tensor]:
         """
         Read an episode from memory at the specified index.
 
@@ -40,7 +39,7 @@ class TemporalLinkageMemoryUnit(MemoryUnit):
             index: The index in memory from which to read the episode.
 
         Returns:
-            The episode read from memory at the specified index, represented as a list of numpy arrays.
+            The episode read from memory at the specified index, represented as a list of Tensors.
 
         Raises:
             IndexError: If the index is out of bounds of the memory.
@@ -49,7 +48,7 @@ class TemporalLinkageMemoryUnit(MemoryUnit):
             raise IndexError("Memory index out of bounds")
         return self.memory[index]
 
-    def predecessor(self, index: int) -> Optional[List[np.ndarray]]:
+    def predecessor(self, index: int) -> Optional[List[torch.Tensor]]:
         """
         Get the predecessor of the episode at the specified index.
 
@@ -61,7 +60,7 @@ class TemporalLinkageMemoryUnit(MemoryUnit):
         """
         return self.memory[index - 1] if index > 0 else None
 
-    def successor(self, index: int) -> Optional[List[np.ndarray]]:
+    def successor(self, index: int) -> Optional[List[torch.Tensor]]:
         """
         Get the successor of the episode at the specified index.
 
@@ -80,8 +79,7 @@ class TemporalLinkageMemoryUnit(MemoryUnit):
         Args:
             filename: The name of the file to save the memory to.
         """
-        with open(filename, "wb") as f:
-            pickle.dump(self.memory, f)
+        torch.save(self.memory, filename)
 
     def load(self, filename: str) -> None:
         """
@@ -90,5 +88,4 @@ class TemporalLinkageMemoryUnit(MemoryUnit):
         Args:
             filename: The name of the file to load the memory from.
         """
-        with open(filename, "rb") as f:
-            self.memory = pickle.load(f)
+        self.memory = torch.load(filename)

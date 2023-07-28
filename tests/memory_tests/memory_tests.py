@@ -3,6 +3,7 @@ import unittest
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import LSTM
+import torch
 from night_two.memory.memory_matrix import MemoryMatrix
 from night_two.memory.content_addressable_memory import ContentAddressableMemoryUnit
 from night_two.memory.temporal_linkage_matrix import TemporalLinkageMemoryUnit
@@ -55,13 +56,13 @@ class TestTemporalLinkageMemoryUnit(unittest.TestCase):
         self.capacity = 5
         self.memory_unit = TemporalLinkageMemoryUnit(self.capacity)
         for i in range(self.capacity):
-            self.memory_unit.write([np.array([i])])
+            self.memory_unit.write([torch.Tensor([i])])
 
     def test_capacity(self):
         assert len(self.memory_unit.memory) == self.memory_unit.capacity
-        self.memory_unit.write([np.array([5])])
+        self.memory_unit.write([torch.Tensor([5])])
         assert len(self.memory_unit.memory) == self.memory_unit.capacity
-        assert self.memory_unit.memory[0][0][0] == 1
+        assert self.memory_unit.memory[0][0].item() == 1
 
     def test_write(self):
         with self.assertRaises(TypeError):
@@ -71,7 +72,7 @@ class TestTemporalLinkageMemoryUnit(unittest.TestCase):
 
     def test_read(self):
         episode = self.memory_unit.read(2)
-        assert episode[0][0] == 2
+        assert episode[0].item() == 2
         with self.assertRaises(IndexError):
             self.memory_unit.read(-1)
         with self.assertRaises(IndexError):
@@ -80,17 +81,17 @@ class TestTemporalLinkageMemoryUnit(unittest.TestCase):
     def test_predecessor_successor(self):
         assert self.memory_unit.predecessor(0) is None
         assert self.memory_unit.successor(self.memory_unit.capacity - 1) is None
-        assert self.memory_unit.predecessor(2)[0][0] == 1
-        assert self.memory_unit.successor(2)[0][0] == 3
+        assert self.memory_unit.predecessor(2)[0].item() == 1
+        assert self.memory_unit.successor(2)[0].item() == 3
 
     def test_save_load(self):
-        filename = "test_memory.pkl"
+        filename = "test_memory.pt"
         self.memory_unit.save(filename)
         assert os.path.exists(filename)
         new_memory_unit = TemporalLinkageMemoryUnit(self.memory_unit.capacity)
         new_memory_unit.load(filename)
         for i in range(self.memory_unit.capacity):
-            assert self.memory_unit.read(i)[0][0] == new_memory_unit.read(i)[0][0]
+            assert self.memory_unit.read(i)[0].item() == new_memory_unit.read(i)[0].item()
         os.remove(filename)
 
 class TestContentAddressableMemoryUnit(unittest.TestCase):
@@ -190,7 +191,7 @@ class TestContentAddressableDNC(unittest.TestCase):
         self.assertIsInstance(self.model.controller, LSTM)
 
     def test_memory_initialization(self):
-        self.assertEqual(self.model.memory.shape, (20, 20))
+        self.assertEqual(self.model.memory.shape, (100, 20))
         
     def test_read_heads(self):
         self.assertEqual(len(self.model.read_heads), 2)
@@ -202,8 +203,6 @@ class TestContentAddressableDNC(unittest.TestCase):
         input_data = tf.random.normal((1, 10, 128))  # batch_size, sequence_length, input_dim
         output_data = self.model(input_data)
         self.assertEqual(output_data.shape, (1, 10, 128))  # batch_size, sequence_length, output_dim
-
-
 
 if __name__ == '__main__':
     unittest.main()
