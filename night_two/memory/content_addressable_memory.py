@@ -1,7 +1,6 @@
-import time
 from typing import Any, List
 import numpy as np
-import torch
+import tensorflow as tf
 from night_two.memory.memory_unit import MemoryUnit
 
 class ContentAddressableMemoryUnit(MemoryUnit):
@@ -17,12 +16,12 @@ class ContentAddressableMemoryUnit(MemoryUnit):
         self.memory = []
         self.content_index = {}
 
-    def write(self, episode: List[np.ndarray]) -> None:
+    def write(self, episode: List[tf.Tensor]) -> None:
         """
         Write a new episode into memory. If memory is full, remove the oldest episode.
 
         Args:
-            episode: The episode to be written into memory, represented as a list of numpy arrays.
+            episode: The episode to be written into memory, represented as a list of TensorFlow Tensors.
         """
         if len(self.memory) == self.capacity:
             removed_episode = self.memory.pop(0)
@@ -35,7 +34,7 @@ class ContentAddressableMemoryUnit(MemoryUnit):
             raise ValueError("An episode with the same content already exists in memory")
         self.content_index[content] = episode
 
-    def read(self, index: int) -> List[np.ndarray]:
+    def read(self, index: int) -> List[tf.Tensor]:
         """
         Read an episode from memory at the specified index.
 
@@ -43,7 +42,7 @@ class ContentAddressableMemoryUnit(MemoryUnit):
             index: The index in memory from which to read the episode.
 
         Returns:
-            The episode read from memory at the specified index, represented as a list of numpy arrays.
+            The episode read from memory at the specified index, represented as a list of TensorFlow Tensors.
 
         Raises:
             IndexError: If the index is out of bounds of the memory.
@@ -52,7 +51,7 @@ class ContentAddressableMemoryUnit(MemoryUnit):
             raise IndexError("Memory index out of bounds")
         return self.memory[index]
 
-    def retrieve(self, content: Any) -> List[np.ndarray]:
+    def retrieve(self, content: Any) -> List[tf.Tensor]:
         """
         Retrieve an episode from memory based on the associated content.
 
@@ -60,7 +59,7 @@ class ContentAddressableMemoryUnit(MemoryUnit):
             content: The content associated with the episode to retrieve.
 
         Returns:
-            The episode associated with the content, represented as a list of numpy arrays.
+            The episode associated with the content, represented as a list of TensorFlow Tensors.
 
         Raises:
             KeyError: If no episode is associated with the content.
@@ -70,8 +69,7 @@ class ContentAddressableMemoryUnit(MemoryUnit):
             raise KeyError(f"No episode associated with content {content}")
         return self.content_index[content_key]
 
-
-    def _generate_content_key(self, content: List[torch.Tensor]) -> str:
+    def _generate_content_key(self, content: List[tf.Tensor]) -> str:
         """
         Generate a string representation of the content that can be used as a dictionary key.
 
@@ -81,5 +79,5 @@ class ContentAddressableMemoryUnit(MemoryUnit):
         Returns:
             A string representation of the content.
         """
-        flattened_content = [item.view(-1).tolist() for item in content]
+        flattened_content = [tf.reshape(item, [-1]).numpy().tolist() for item in content]
         return str(flattened_content)

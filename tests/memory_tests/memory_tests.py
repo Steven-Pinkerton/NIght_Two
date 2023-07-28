@@ -3,7 +3,6 @@ import unittest
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import LSTM
-import torch
 from night_two.memory.memory_matrix import MemoryMatrix
 from night_two.memory.content_addressable_memory import ContentAddressableMemoryUnit
 from night_two.memory.temporal_linkage_matrix import TemporalLinkageMemoryUnit
@@ -56,13 +55,13 @@ class TestTemporalLinkageMemoryUnit(unittest.TestCase):
         self.capacity = 5
         self.memory_unit = TemporalLinkageMemoryUnit(self.capacity)
         for i in range(self.capacity):
-            self.memory_unit.write([torch.Tensor([i])])
+            self.memory_unit.write([tf.convert_to_tensor([i])])
 
     def test_capacity(self):
         assert len(self.memory_unit.memory) == self.memory_unit.capacity
-        self.memory_unit.write([torch.Tensor([5])])
+        self.memory_unit.write([tf.convert_to_tensor([5])])
         assert len(self.memory_unit.memory) == self.memory_unit.capacity
-        assert self.memory_unit.memory[0][0].item() == 1
+        assert self.memory_unit.memory[0][0].numpy() == 1
 
     def test_write(self):
         with self.assertRaises(TypeError):
@@ -100,34 +99,35 @@ class TestContentAddressableMemoryUnit(unittest.TestCase):
         self.capacity = 5
         self.memory_unit = ContentAddressableMemoryUnit(self.capacity)
         for i in range(self.capacity):
-            self.memory_unit.write([torch.tensor([i])])
+            self.memory_unit.write([tf.convert_to_tensor([i])])
 
     def test_capacity(self):
         assert len(self.memory_unit.memory) == self.memory_unit.capacity
-        self.memory_unit.write([torch.tensor([5])])
+        self.memory_unit.write([tf.convert_to_tensor([5])])
         assert len(self.memory_unit.memory) == self.memory_unit.capacity
-        assert torch.equal(self.memory_unit.memory[0][0], torch.tensor([1]))
+        assert tf.reduce_all(tf.equal(self.memory_unit.memory[0][0], tf.convert_to_tensor([1])))
 
     def test_write_read(self):
-        episode = [torch.tensor([6])]
+        episode = [tf.convert_to_tensor([6])]
         self.memory_unit.write(episode)
         read_episode = self.memory_unit.read(self.capacity - 1)
-        assert torch.equal(read_episode[0], episode[0])
+        assert tf.reduce_all(tf.equal(read_episode[0], episode[0]))
 
     def test_duplicate_content(self):
-        episode = [torch.tensor([6])]
+        episode = [tf.convert_to_tensor([6])]
         with self.assertRaises(ValueError):
             self.memory_unit.write(episode)
             self.memory_unit.write(episode)  # Duplicate write should raise ValueError
 
     def test_retrieve(self):
-        episode = [torch.tensor([7])]
+        episode = [tf.convert_to_tensor([7])]
         self.memory_unit.write(episode)
-        retrieved_episode = self.memory_unit.retrieve([torch.tensor([7])])  # Pass torch.tensor([7]) instead of [7]
-        assert torch.equal(retrieved_episode[0], episode[0])
+        retrieved_episode = self.memory_unit.retrieve([tf.convert_to_tensor([7])])  # Pass tf.convert_to_tensor([7]) instead of [7]
+        assert tf.reduce_all(tf.equal(retrieved_episode[0], episode[0]))
         with self.assertRaises(KeyError):
-            self.memory_unit.retrieve([torch.tensor([100])])  # Pass torch.tensor([100]) instead of [100]
-
+            self.memory_unit.retrieve([tf.convert_to_tensor([100])])  # Pass tf.convert_to_tensor([100]) instead of [100]
+            
+            
 class TestDNCModel(unittest.TestCase):
     def setUp(self):
         # Initialize a DNC model
