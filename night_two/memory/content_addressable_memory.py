@@ -1,6 +1,7 @@
 import time
 from typing import Any, List
 import numpy as np
+import torch
 from night_two.memory.memory_unit import MemoryUnit
 
 class ContentAddressableMemoryUnit(MemoryUnit):
@@ -69,7 +70,8 @@ class ContentAddressableMemoryUnit(MemoryUnit):
             raise KeyError(f"No episode associated with content {content}")
         return self.content_index[content_key]
 
-    def _generate_content_key(self, content: Any) -> str:
+
+    def _generate_content_key(self, content: List[torch.Tensor]) -> str:
         """
         Generate a string representation of the content that can be used as a dictionary key.
 
@@ -79,7 +81,5 @@ class ContentAddressableMemoryUnit(MemoryUnit):
         Returns:
             A string representation of the content.
         """
-        print(f"Content: {content}")
-        flattened_content = [item for sublist in content for item in sublist]
-        print(f"Flattened content: {flattened_content}")
+        flattened_content = [item.view(-1).tolist() for item in content]
         return str(flattened_content)
