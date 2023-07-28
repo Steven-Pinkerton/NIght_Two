@@ -1,6 +1,5 @@
 from typing import List, Optional
 import numpy as np
-
 import tensorflow as tf
 
 from night_two.memory.memory_unit import MemoryUnit
