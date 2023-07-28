@@ -1,4 +1,5 @@
 from typing import List, Optional
+import numpy as np
 
 import tensorflow as tf
 
@@ -80,7 +81,8 @@ class TemporalLinkageMemoryUnit(MemoryUnit):
         Args:
             filename: The name of the file to save the memory to.
         """
-        tf.saved_model.save(self.memory, filename)
+        memory_np = [[tensor.numpy() for tensor in episode] for episode in self.memory]
+        np.save(filename, memory_np)
 
     def load(self, filename: str) -> None:
         """
@@ -89,4 +91,4 @@ class TemporalLinkageMemoryUnit(MemoryUnit):
         Args:
             filename: The name of the file to load the memory from.
         """
-        self.memory = tf.saved_model.load(filename)
+        self.memory = [[tf.convert_to_tensor(item) for item in episode] for episode in np.load(filename, allow_pickle=True)]

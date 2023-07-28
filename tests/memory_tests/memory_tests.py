@@ -61,7 +61,7 @@ class TestTemporalLinkageMemoryUnit(unittest.TestCase):
         assert len(self.memory_unit.memory) == self.memory_unit.capacity
         self.memory_unit.write([tf.convert_to_tensor([5])])
         assert len(self.memory_unit.memory) == self.memory_unit.capacity
-        assert self.memory_unit.memory[0][0].numpy() == 1
+        assert int(self.memory_unit.memory[0][0].numpy()) == 1
 
     def test_write(self):
         with self.assertRaises(TypeError):
@@ -71,7 +71,7 @@ class TestTemporalLinkageMemoryUnit(unittest.TestCase):
 
     def test_read(self):
         episode = self.memory_unit.read(2)
-        assert episode[0].item() == 2
+        assert int(episode[0].numpy()) == 2
         with self.assertRaises(IndexError):
             self.memory_unit.read(-1)
         with self.assertRaises(IndexError):
@@ -80,8 +80,8 @@ class TestTemporalLinkageMemoryUnit(unittest.TestCase):
     def test_predecessor_successor(self):
         assert self.memory_unit.predecessor(0) is None
         assert self.memory_unit.successor(self.memory_unit.capacity - 1) is None
-        assert self.memory_unit.predecessor(2)[0].item() == 1
-        assert self.memory_unit.successor(2)[0].item() == 3
+        assert int(self.memory_unit.predecessor(2)[0].numpy()) == 1
+        assert int(self.memory_unit.successor(2)[0].numpy()) == 3
 
     def test_save_load(self):
         filename = "test_memory.pt"
@@ -90,7 +90,7 @@ class TestTemporalLinkageMemoryUnit(unittest.TestCase):
         new_memory_unit = TemporalLinkageMemoryUnit(self.memory_unit.capacity)
         new_memory_unit.load(filename)
         for i in range(self.memory_unit.capacity):
-            assert self.memory_unit.read(i)[0].item() == new_memory_unit.read(i)[0].item()
+            assert int(self.memory_unit.read(i)[0].numpy()) == int(new_memory_unit.read(i)[0].numpy())
         os.remove(filename)
 
 class TestContentAddressableMemoryUnit(unittest.TestCase):
