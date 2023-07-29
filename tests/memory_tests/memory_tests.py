@@ -194,7 +194,26 @@ class TestContentAddressableDNC(unittest.TestCase):
         input_data = tf.random.normal((1, 10, 128))  # batch_size, sequence_length, input_dim
         output_data = self.model(input_data)
         self.assertEqual(output_data.shape, (1, 10, 168))  # batch_size, sequence_length, output_dim
+    
+    def test_read_head(self):
+        read_head = self.model.read_heads[0]
+        dummy_memory = tf.random.normal((self.model.num_memory_slots, self.model.memory_size))
+        dummy_controller_output = tf.random.normal((1, 10, self.model.controller_size))
+        output = read_head(dummy_memory, dummy_controller_output)
+        self.assertEqual(output.shape, (1, 10, self.model.memory_size))
         
+    def test_write_head(self):
+        write_head = self.model.write_heads[0]
+        dummy_memory = tf.random.normal((self.model.num_memory_slots, self.model.memory_size))
+        dummy_controller_output = tf.random.normal((1, 10, self.model.controller_size))
+        output = write_head(dummy_memory, dummy_controller_output)
+        self.assertEqual(output.shape, (self.model.num_memory_slots, self.model.memory_size))
+        
+    def test_content_addressable_memory(self):
+        dummy_controller_output = tf.random.normal((1, 10, self.model.controller_size)).numpy().tolist()
+        self.model.content_addressable_memory.write(dummy_controller_output)
+        self.assertEqual(len(self.model.content_addressable_memory.memory), min(len(dummy_controller_output), self.model.content_addressable_memory.capacity))
+
         
 if __name__ == '__main__':
     unittest.main()

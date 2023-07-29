@@ -135,7 +135,6 @@ class ContentAddressableReadHead(ReadHead):
 
         return read_vector
 
-
 class ContentAddressableWriteHead(WriteHead):
     def __init__(self, memory_size: int, num_memory_slots: int):
         super().__init__(memory_size)
