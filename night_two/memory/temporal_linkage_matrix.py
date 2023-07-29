@@ -99,3 +99,30 @@ class TemporalLinkageMemoryUnit(MemoryUnit):
             self.memory = [[tf.convert_to_tensor(item) for item in episode] for episode in np.load(filename, allow_pickle=True)]
         except Exception as e:
             print(f"An error occurred while loading: {str(e)}")
+            
+            
+class TemporalLinkageMatrix(tf.Module):
+    def __init__(self, num_memory_slots: int):
+        super().__init__()
+        self.num_memory_slots = num_memory_slots
+
+        # Initialize linkage matrix with zeros and set it as non-trainable
+        self.linkage_matrix = tf.zeros(shape=(num_memory_slots, num_memory_slots))
+
+    def update(self, prev_write_weights: tf.Tensor, write_weights: tf.Tensor):
+        """Update the linkage matrix based on the write weights."""
+        # Calculate the sum of the previous write weights along the second dimension
+        sum_prev_write_weights = tf.reduce_sum(prev_write_weights, axis=-1, keepdims=True)
+
+        # Compute a term that captures the fact that once a memory cell is written to,
+        # it is no longer the most recent write for any other cell.
+        term1 = (1 - sum_prev_write_weights) * self.linkage_matrix
+
+        # Compute a term that captures the new writes that have been made
+        term2 = tf.linalg.matmul(prev_write_weights[..., tf.newaxis], write_weights[..., tf.newaxis, :])
+
+        self.linkage_matrix = term1 + term2
+
+    def get(self):
+        """Return the current state of the linkage matrix."""
+        return self.linkage_matrix

@@ -83,7 +83,6 @@ class TestTemporalLinkageMemoryUnit(unittest.TestCase):
         assert int(self.memory_unit.predecessor(2)[0].numpy()) == 1
         assert int(self.memory_unit.successor(2)[0].numpy()) == 3
 
-
 class TestContentAddressableMemoryUnit(unittest.TestCase):
     
     def setUp(self):
@@ -117,8 +116,7 @@ class TestContentAddressableMemoryUnit(unittest.TestCase):
         assert tf.reduce_all(tf.equal(retrieved_episode[0], episode[0]))
         with self.assertRaises(KeyError):
             self.memory_unit.retrieve([tf.convert_to_tensor([100])])  # Pass tf.convert_to_tensor([100]) instead of [100]
-            
-            
+                       
 class TestDNCModel(unittest.TestCase):
     def setUp(self):
         # Initialize a DNC model
