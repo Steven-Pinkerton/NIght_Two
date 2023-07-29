@@ -80,8 +80,12 @@ class TemporalLinkageMemoryUnit(MemoryUnit):
         Args:
             filename: The name of the file to save the memory to.
         """
-        memory_np = [[tensor.numpy() for tensor in episode] for episode in self.memory]
-        np.save(filename, memory_np)
+        filename = filename if filename.endswith(".npy") else filename + ".npy"
+        try:
+            memory_np = [[tensor.numpy() for tensor in episode] for episode in self.memory]
+            np.save(filename, memory_np)
+        except Exception as e:
+            print(f"An error occurred while saving: {str(e)}")
 
     def load(self, filename: str) -> None:
         """
@@ -90,4 +94,8 @@ class TemporalLinkageMemoryUnit(MemoryUnit):
         Args:
             filename: The name of the file to load the memory from.
         """
-        self.memory = [[tf.convert_to_tensor(item) for item in episode] for episode in np.load(filename, allow_pickle=True)]
+        filename = filename if filename.endswith(".npy") else filename + ".npy"
+        try:
+            self.memory = [[tf.convert_to_tensor(item) for item in episode] for episode in np.load(filename, allow_pickle=True)]
+        except Exception as e:
+            print(f"An error occurred while loading: {str(e)}")

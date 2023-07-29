@@ -118,15 +118,13 @@ class ContentAddressableReadHead(ReadHead):
     def call(self, memory: tf.Tensor, controller_output: tf.Tensor) -> tf.Tensor:
         # Generate a key from the controller's output
         key = self.key_network(controller_output)
-        print(f"Key shape: {key.shape}")
         key = tf.nn.softmax(key, axis=-1)    # normalize the key
 
         # reshape memory to match the key size
         memory_reshaped = tf.reshape(memory, [1, 1, self.num_memory_slots, self.memory_size])
 
         # tile memory to match the number of keys in each batch and sequence length
-        memory_tiled = tf.tile(memory_reshaped, [tf.shape(key)[0], tf.shape(key)[1], 1, 1])
-
+        memory_tiled = tf.tile(memory_reshaped, [tf.shape(controller_output)[0], tf.shape(controller_output)[1], 1, 1])
 
         # Calculate the similarities between the key and each memory location
         similarities = tf.keras.losses.cosine_similarity(key[..., tf.newaxis, :], memory_tiled)
@@ -137,13 +135,13 @@ class ContentAddressableReadHead(ReadHead):
 
         return read_vector
 
+
 class ContentAddressableWriteHead(WriteHead):
     def __init__(self, memory_size: int, num_memory_slots: int):
         super().__init__(memory_size)
         self.num_memory_slots = num_memory_slots
 
         # Initialize the networks to produce outputs of the correct size
-        # Now, each network output should be of size num_memory_slots * memory_size.
         self.key_network = tf.keras.layers.Dense(self.memory_size)
         self.erase_network = tf.keras.layers.Dense(self.memory_size, activation='sigmoid')
         self.add_network = tf.keras.layers.Dense(self.memory_size, activation='relu')
@@ -151,40 +149,40 @@ class ContentAddressableWriteHead(WriteHead):
     def call(self, memory: tf.Tensor, controller_output: tf.Tensor) -> tf.Tensor:
         # Generate a key from the controller's output
         key = self.key_network(controller_output)
-        print(f"Key shape: {key.shape}")
         key = tf.nn.softmax(key, axis=-1)
 
         # reshape memory to match the key size
         memory_reshaped = tf.reshape(memory, [1, 1, self.num_memory_slots, self.memory_size])
 
-        # tile memory to match the number of keys in each batch
-        memory_tiled = tf.tile(memory_reshaped, [tf.shape(key)[0], tf.shape(key)[1], 1, 1])
-
-        # Expand dimensions of key to match memory_tiled
-        key_expanded = tf.expand_dims(key, axis=-2)  
+        # tile memory to match the number of keys in each batch and sequence length
+        memory_tiled = tf.tile(memory_reshaped, [tf.shape(controller_output)[0], tf.shape(controller_output)[1], 1, 1])
 
         # Calculate the similarities between the key and each memory location
-        print("key_expanded shape:", tf.shape(key_expanded))
-        print("memory_tiled shape:", tf.shape(memory_tiled))
-        similarities = tf.keras.losses.cosine_similarity(key_expanded, memory_tiled)
+        similarities = tf.keras.losses.cosine_similarity(key[..., tf.newaxis, :], memory_tiled)
         write_weights = tf.nn.softmax(similarities, axis=-1)  # normalize the similarities to get write weights
 
         # Generate erase and add vectors
         erase_vector = self.erase_network(controller_output)
         add_vector = self.add_network(controller_output)
 
-        # reshape erase_vector and add_vector to match the write_weights
-        erase_vector = tf.reshape(erase_vector, [tf.shape(controller_output)[0], tf.shape(controller_output)[1], self.memory_size])
-        add_vector = tf.reshape(add_vector, [tf.shape(controller_output)[0], tf.shape(controller_output)[1], self.memory_size])
+        # Expand dimensions of erase_vector and add_vector to match the write_weights
+        erase_vector = tf.expand_dims(erase_vector, axis=-2)  # shape now: [batch_size, sequence_length, 1, memory_size]
+        add_vector = tf.expand_dims(add_vector, axis=-2)  # shape now: [batch_size, sequence_length, 1, memory_size]
 
-        print("Write weights shape:", tf.shape(write_weights))
-        print("Erase vector shape:", tf.shape(erase_vector))
-        print("Add vector shape:", tf.shape(add_vector))
+        # Tile erase_vector and add_vector across the third dimension to match the number of memory slots
+        erase_vector = tf.tile(erase_vector, [1, 1, self.num_memory_slots, 1])
+        add_vector = tf.tile(add_vector, [1, 1, self.num_memory_slots, 1])
+
+        # Expand dimensions of write_weights before multiplication
+        write_weights_expanded = tf.expand_dims(write_weights, axis=-1)
 
         # Update the memory matrix
-        memory = (1 - write_weights * erase_vector[..., tf.newaxis]) * memory + write_weights * add_vector[..., tf.newaxis]
+        memory_tiled = (1 - write_weights_expanded * erase_vector) * memory_tiled + write_weights_expanded * add_vector
+        
+        # Aggregate memory_tiled across the batch size and sequence length dimensions to update self.memory
+        self.memory = tf.reduce_mean(tf.reduce_mean(memory_tiled, axis=0), axis=0)
 
-        return memory
+        return self.memory
 
 class ContentAddressableDNC(Model):
     def __init__(self, controller_size=128, memory_size=20, num_read_heads=2, num_write_heads=2, num_memory_slots=100, capacity=100, **kwargs):
@@ -210,8 +208,6 @@ class ContentAddressableDNC(Model):
 
         # Initialize content addressable memory
         self.content_addressable_memory = ContentAddressableMemoryUnit(capacity)
-        
-        self.controller = tf.keras.layers.LSTM(controller_size, return_sequences=True)
     
     def call(self, inputs: tf.Tensor) -> List[tf.Tensor]:
         """Performs one step of DNC.
