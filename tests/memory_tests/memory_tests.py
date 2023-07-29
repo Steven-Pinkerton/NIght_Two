@@ -6,7 +6,7 @@ from tensorflow.keras.layers import LSTM
 from night_two.memory.memory_matrix import MemoryMatrix
 from night_two.memory.content_addressable_memory import ContentAddressableMemoryUnit
 from night_two.memory.temporal_linkage_matrix import TemporalLinkageMemoryUnit
-from night_two.memory.dnc_memory import ContentAddressableDNC, ReadHead, WriteHead, DNC
+from night_two.memory.dnc_memory import ContentAddressableDNC, ReadHead, WriteHead, DNC, ContentAddressableWriteHeadWithLinkage
 
 class TestMemoryMatrix(unittest.TestCase):
 
@@ -211,6 +211,47 @@ class TestContentAddressableDNC(unittest.TestCase):
         dummy_controller_output = tf.random.normal((1, 10, self.model.controller_size)).numpy().tolist()
         self.model.content_addressable_memory.write(dummy_controller_output)
         self.assertEqual(len(self.model.content_addressable_memory.memory), min(len(dummy_controller_output), self.model.content_addressable_memory.capacity))
+
+class TestContentAddressableWriteHeadWithLinkage(unittest.TestCase):
+    def setUp(self):
+        # Set up some parameters for the tests
+        self.memory_size = 8
+        self.num_memory_slots = 4
+        self.batch_size = 2
+
+        # Create an instance of the write head for the tests
+        self.write_head = ContentAddressableWriteHeadWithLinkage(self.memory_size, self.num_memory_slots)
+
+    def test_call(self):
+        # Initialize memory with random values
+        initial_memory = tf.random.uniform(shape=(self.batch_size, self.num_memory_slots, self.memory_size), minval=-1, maxval=1)
+
+        # Create some fake controller outputs
+        controller_output = tf.random.uniform(shape=(self.batch_size, self.memory_size), minval=-1, maxval=1)
+
+        # Call the write head with the initial memory and controller outputs
+        new_memory = self.write_head(initial_memory, controller_output)
+
+        # Check the shape of the updated memory
+        self.assertEqual(new_memory.shape, initial_memory.shape)
+
+        # Check the write weights
+        write_weights = self.write_head.get_write_weights()
+        self.assertEqual(write_weights.shape, (self.batch_size, self.num_memory_slots))
+        self.assertTrue(np.allclose(np.sum(write_weights.numpy(), axis=-1), np.ones(self.batch_size)))
+
+        # Check the temporal linkage matrix
+        temporal_linkage_matrix = self.write_head.get_temporal_linkage_matrix()
+        self.assertEqual(temporal_linkage_matrix.shape, (self.num_memory_slots, self.num_memory_slots))
+
+    def test_reset_states(self):
+        # Call the reset_states method
+        self.write_head.reset_states()
+
+        # Check that the previous write weights and the temporal linkage matrix have been reset
+        self.assertTrue(np.allclose(self.write_head.get_prev_write_weights().numpy(), np.zeros(self.num_memory_slots)))
+        self.assertTrue(np.allclose(self.write_head.get_temporal_linkage_matrix().numpy(), np.zeros((self.num_memory_slots, self.num_memory_slots))))
+
 
         
 if __name__ == '__main__':

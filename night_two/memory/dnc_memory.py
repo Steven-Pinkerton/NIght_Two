@@ -1,8 +1,7 @@
-from typing import List
+from typing import List, Optional
 import tensorflow as tf
 from tensorflow.keras import Model
 from tensorflow.keras.layers import Dense, LSTM
-
 from night_two.memory.content_addressable_memory import ContentAddressableMemoryUnit
 from night_two.memory.temporal_linkage_matrix import TemporalLinkageMatrix
 
@@ -235,91 +234,37 @@ class ContentAddressableDNC(Model):
 
         return output
     
-class ContentAddressableWriteHeadWithLinkage(ContentAddressableWriteHead):
+class ContentAddressableWriteHeadWithLinkage(WriteHead):
     def __init__(self, memory_size: int, num_memory_slots: int):
-        super().__init__(memory_size, num_memory_slots)
-        self.temporal_linkage_matrix = TemporalLinkageMatrix(num_memory_slots)
-
-        # Keep track of the previous write weights
-        self.prev_write_weights = None
-
-    def call(self, memory: tf.Tensor, controller_output: tf.Tensor) -> tf.Tensor:
-        # Compute write weights just as in the ContentAddressableWriteHead
-        ...
-
-        # Update the temporal linkage matrix using the current and previous write weights
-        self.temporal_linkage_matrix.update(self.prev_write_weights, write_weights)
-
-        # Save the current write weights for use in the next time step
-        self.prev_write_weights = write_weights
-
-        # Perform the memory update just as in the ContentAddressableWriteHead
-        ...
-
-        return self.memory
-
-class ContentAddressableReadHeadWithLinkage(ContentAddressableReadHead):
-    def __init__(self, memory_size: int, num_memory_slots: int, write_head: ContentAddressableWriteHeadWithLinkage):
-        super().__init__(memory_size, num_memory_slots)
-        self.write_head = write_head
-
-    def call(self, memory: tf.Tensor, controller_output: tf.Tensor) -> tf.Tensor:
-        # Compute read weights based on the temporal linkage matrix and the previous read weights
-        read_weights = tf.linalg.matmul(self.write_head.prev_write_weights, self.write_head.temporal_linkage_matrix.get())
-
-        # Read from the memory matrix based on the read weights
-        read_vector = tf.reduce_sum(read_weights[..., tf.newaxis] * memory_tiled, axis=2)
-
-        return read_vector
-    
-class ContentAddressableDNCWithLinkage(Model):
-    def __init__(self, controller_size=128, memory_size=20, num_read_heads=2, num_write_heads=2, num_memory_slots=100, capacity=100, **kwargs):
-        super().__init__(**kwargs)
-        self.controller_size = controller_size
-        self.memory_size = memory_size
-        self.num_read_heads = num_read_heads
-        self.num_write_heads = num_write_heads
+        super().__init__(memory_size)
         self.num_memory_slots = num_memory_slots
-        self.capacity = capacity
+        self.reset_states()
 
-        # Initialize LSTM controller with given size
-        self.controller = tf.keras.layers.LSTM(controller_size, return_sequences=True)
-         
-        # Initialize read and write heads with memory size and number of memory slots
-        self.write_heads = [ContentAddressableWriteHeadWithLinkage(memory_size, num_memory_slots) for _ in range(num_write_heads)]
-        self.read_heads = [ContentAddressableReadHeadWithLinkage(memory_size, num_memory_slots, self.write_heads[i]) for i in range(num_read_heads)]
+        # Initialize the temporal linkage matrix
+        self.temporal_linkage_matrix = TemporalLinkageMatrix(num_memory_slots)
         
+        # Initialize the previous write weights as zeros
+        self.prev_write_weights = tf.zeros(shape=(num_memory_slots,), dtype=tf.float32)
 
-        # Initialize memory matrix with zeros and set it as non-trainable
-        self.memory = self.add_weight(shape=(self.num_memory_slots, self.memory_size), 
-                              initializer='zeros', trainable=False)
+    def call(self, memory: tf.Tensor, controller_output: tf.Tensor) -> tf.Tensor:
+        # Compute the next memory state as usual
+        next_memory_state = super().call(memory, controller_output)
 
-        # Initialize content addressable memory
-        self.content_addressable_memory = ContentAddressableMemoryUnit(capacity)
-    
-    def call(self, inputs: tf.Tensor) -> List[tf.Tensor]:
-        """Performs one step of DNC.
-        
-        Args:
-        inputs: Input tensor
-        
-        Returns:
-        A list of read vectors
-        """
-        # Get controller's output
-        controller_output = self.controller(inputs)
+        # Update the temporal linkage matrix based on the previous and current write weights
+        self.temporal_linkage_matrix.update(self.prev_write_weights, self.write_weights)
 
-        # Each read head reads from the memory matrix
-        read_vectors = [head(self.memory, controller_output) for head in self.read_heads]
+        # Update the previous write weights with the current write weights
+        self.prev_write_weights = self.write_weights
 
-        # Each write head writes to the memory matrix using the controller's output
-        for head in self.write_heads:
-            self.memory = head(self.memory, controller_output)
+        return next_memory_state
 
-        # Write the controller output to the content addressable memory
-        self.content_addressable_memory.write(controller_output.numpy().tolist())
+    def reset_states(self):
+        # Reset the previous write weights and the temporal linkage matrix when resetting the states of the head
+        self.prev_write_weights = tf.zeros(shape=(self.num_memory_slots,), dtype=tf.float32)
+        self.temporal_linkage_matrix.reset_states()
 
-        # The output for each timestep is a combination of the controller's output and the read vectors
-        output = tf.concat([controller_output] + read_vectors, axis=-1)
+    def get_write_weights(self):
+        return self.write_weights
 
-        return output
+    def get_temporal_linkage_matrix(self):
+        return self.temporal_linkage_matrix.get()

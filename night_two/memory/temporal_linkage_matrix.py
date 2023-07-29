@@ -99,12 +99,12 @@ class TemporalLinkageMemoryUnit(MemoryUnit):
             self.memory = [[tf.convert_to_tensor(item) for item in episode] for episode in np.load(filename, allow_pickle=True)]
         except Exception as e:
             print(f"An error occurred while loading: {str(e)}")
-            
-            
+                
 class TemporalLinkageMatrix(tf.Module):
     def __init__(self, num_memory_slots: int):
         super().__init__()
         self.num_memory_slots = num_memory_slots
+        self.reset_states()
 
         # Initialize linkage matrix with zeros and set it as non-trainable
         self.linkage_matrix = tf.zeros(shape=(num_memory_slots, num_memory_slots))
@@ -117,12 +117,16 @@ class TemporalLinkageMatrix(tf.Module):
         # Compute a term that captures the fact that once a memory cell is written to,
         # it is no longer the most recent write for any other cell.
         term1 = (1 - sum_prev_write_weights) * self.linkage_matrix
-
-        # Compute a term that captures the new writes that have been made
         term2 = tf.linalg.matmul(prev_write_weights[..., tf.newaxis], write_weights[..., tf.newaxis, :])
+
+        # Sum across the last dimension of term2 to make its shape compatible with term1
+        term2 = tf.reduce_sum(term2, axis=-1)
 
         self.linkage_matrix = term1 + term2
 
     def get(self):
         """Return the current state of the linkage matrix."""
         return self.linkage_matrix
+    
+    def reset_states(self):
+        self.linkage_matrix = tf.zeros(shape=(self.num_memory_slots, self.num_memory_slots), dtype=tf.float32)
