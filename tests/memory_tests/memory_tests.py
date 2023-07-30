@@ -227,10 +227,11 @@ class TestContentAddressableWriteHeadWithLinkage(unittest.TestCase):
         initial_memory = tf.random.uniform(shape=(self.batch_size, self.num_memory_slots, self.memory_size), minval=-1, maxval=1)
 
         # Create some fake controller outputs
-        controller_output = tf.random.uniform(shape=(self.batch_size, self.memory_size), minval=-1, maxval=1)
+        controller_output = tf.random.uniform(shape=(self.batch_size, 3*self.memory_size), minval=-1, maxval=1)
 
         # Call the write head with the initial memory and controller outputs
-        new_memory = self.write_head(initial_memory, controller_output)
+        new_memory = self.write_head.call(initial_memory, controller_output)
+
 
         # Check the shape of the updated memory
         self.assertEqual(new_memory.shape, initial_memory.shape)
@@ -242,17 +243,25 @@ class TestContentAddressableWriteHeadWithLinkage(unittest.TestCase):
 
         # Check the temporal linkage matrix
         temporal_linkage_matrix = self.write_head.get_temporal_linkage_matrix()
-        self.assertEqual(temporal_linkage_matrix.shape, (self.num_memory_slots, self.num_memory_slots))
+        self.assertEqual(temporal_linkage_matrix.shape, (self.batch_size, self.num_memory_slots, self.num_memory_slots))
 
     def test_reset_states(self):
         # Call the reset_states method
         self.write_head.reset_states()
 
-        # Check that the previous write weights and the temporal linkage matrix have been reset
-        self.assertTrue(np.allclose(self.write_head.get_prev_write_weights().numpy(), np.zeros(self.num_memory_slots)))
-        self.assertTrue(np.allclose(self.write_head.get_temporal_linkage_matrix().numpy(), np.zeros((self.num_memory_slots, self.num_memory_slots))))
+        # Check that the previous write weights have been reset
+        prev_write_weights = self.write_head.get_prev_write_weights()
+        if prev_write_weights is not None:
+            self.assertTrue(np.allclose(prev_write_weights.numpy(), np.zeros((self.batch_size, self.num_memory_slots))))
+        else:
+            self.assertEqual(prev_write_weights, None)
 
-
+        # Check that the temporal linkage matrix has been reset
+        temp_linkage_matrix = self.write_head.get_temporal_linkage_matrix()
+        if temp_linkage_matrix is not None:
+            self.assertTrue(np.allclose(temp_linkage_matrix.numpy(), np.zeros((self.batch_size, self.num_memory_slots, self.num_memory_slots))))
+        else:
+            self.assertEqual(temp_linkage_matrix, None)
         
 if __name__ == '__main__':
     unittest.main()

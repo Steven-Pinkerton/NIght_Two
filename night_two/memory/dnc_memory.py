@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import tensorflow as tf
 from tensorflow.keras import Model
 from tensorflow.keras.layers import Dense, LSTM
@@ -233,22 +233,42 @@ class ContentAddressableDNC(Model):
         output = tf.concat([controller_output] + read_vectors, axis=-1)
 
         return output
-    
-class ContentAddressableWriteHeadWithLinkage(WriteHead):
+
+class ContentAddressableWriteHeadWithLinkage(tf.Module):
     def __init__(self, memory_size: int, num_memory_slots: int):
-        super().__init__(memory_size)
+        super().__init__()
+        self.memory_size = memory_size
         self.num_memory_slots = num_memory_slots
-        self.reset_states()
 
         # Initialize the temporal linkage matrix
         self.temporal_linkage_matrix = TemporalLinkageMatrix(num_memory_slots)
-        
+
         # Initialize the previous write weights as zeros
         self.prev_write_weights = tf.zeros(shape=(num_memory_slots,), dtype=tf.float32)
 
+        self.reset_states()
+
     def call(self, memory: tf.Tensor, controller_output: tf.Tensor) -> tf.Tensor:
-        # Compute the next memory state as usual
-        next_memory_state = super().call(memory, controller_output)
+        # Infer batch size from the controller output
+        self.batch_size = tf.shape(controller_output)[0]
+        
+        # Initialize the previous write weights here
+        self.prev_write_weights = tf.zeros(shape=(self.batch_size, self.num_memory_slots,), dtype=tf.float32)
+
+        key, erase_vector, write_vector = self._parse_controller_output(controller_output)
+
+        # Reshape the key to match the shape of memory
+        key = tf.reshape(key, [-1, 1, self.memory_size])
+
+        similarities = tf.keras.losses.cosine_similarity(key, memory)
+        self.write_weights = tf.nn.softmax(similarities, axis=1)
+
+        erase_vector_broadcasted = tf.broadcast_to(erase_vector[:, tf.newaxis, :], [self.batch_size, self.num_memory_slots, self.memory_size])
+        erase_term = tf.einsum('ij,ijk->ijk', self.write_weights, erase_vector_broadcasted)
+        write_vector_broadcasted = tf.broadcast_to(write_vector[:, tf.newaxis, :], [self.batch_size, self.num_memory_slots, self.memory_size])
+        write_term = tf.einsum('ij,ijk->ijk', self.write_weights, write_vector_broadcasted)
+
+        next_memory_state = memory * (1 - erase_term) + write_term
 
         # Update the temporal linkage matrix based on the previous and current write weights
         self.temporal_linkage_matrix.update(self.prev_write_weights, self.write_weights)
@@ -268,3 +288,12 @@ class ContentAddressableWriteHeadWithLinkage(WriteHead):
 
     def get_temporal_linkage_matrix(self):
         return self.temporal_linkage_matrix.get()
+
+    def _parse_controller_output(self, controller_output: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+        key = controller_output[:, :self.memory_size]
+        erase_vector = tf.sigmoid(controller_output[:, self.memory_size:self.memory_size*2])
+        write_vector = controller_output[:, self.memory_size*2:self.memory_size*3]
+        return key, erase_vector, write_vector
+
+    def get_prev_write_weights(self):
+        return self.prev_write_weights

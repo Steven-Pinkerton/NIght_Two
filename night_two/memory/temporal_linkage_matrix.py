@@ -104,29 +104,38 @@ class TemporalLinkageMatrix(tf.Module):
     def __init__(self, num_memory_slots: int):
         super().__init__()
         self.num_memory_slots = num_memory_slots
-        self.reset_states()
-
-        # Initialize linkage matrix with zeros and set it as non-trainable
-        self.linkage_matrix = tf.zeros(shape=(num_memory_slots, num_memory_slots))
+        self.batch_size = None
+        self.linkage_matrix = None  # Initialize with None.
 
     def update(self, prev_write_weights: tf.Tensor, write_weights: tf.Tensor):
         """Update the linkage matrix based on the write weights."""
+        if self.batch_size is None or self.linkage_matrix is None:
+            # Infer the batch size from the write weights
+            self.batch_size = tf.shape(write_weights)[0]
+            # Initialize linkage matrix with zeros and set it as non-trainable
+            self.linkage_matrix = tf.zeros(shape=(self.batch_size, self.num_memory_slots, self.num_memory_slots))
+
         # Calculate the sum of the previous write weights along the second dimension
         sum_prev_write_weights = tf.reduce_sum(prev_write_weights, axis=-1, keepdims=True)
 
         # Compute a term that captures the fact that once a memory cell is written to,
         # it is no longer the most recent write for any other cell.
-        term1 = (1 - sum_prev_write_weights) * self.linkage_matrix
-        term2 = tf.linalg.matmul(prev_write_weights[..., tf.newaxis], write_weights[..., tf.newaxis, :])
+        term1 = (1 - sum_prev_write_weights[..., tf.newaxis]) * self.linkage_matrix
 
-        # Sum across the last dimension of term2 to make its shape compatible with term1
-        term2 = tf.reduce_sum(term2, axis=-1)
+        # Here we need to adjust the shape of term2 to match that of term1
+        term2 = tf.linalg.matmul(prev_write_weights[..., tf.newaxis], write_weights[..., tf.newaxis, :])
+        term2 = tf.reduce_sum(term2, axis=-1, keepdims=True)
 
         self.linkage_matrix = term1 + term2
 
     def get(self):
         """Return the current state of the linkage matrix."""
+        if self.linkage_matrix is None:
+            # If linkage_matrix is None, return None
+            return None
         return self.linkage_matrix
-    
+
     def reset_states(self):
-        self.linkage_matrix = tf.zeros(shape=(self.num_memory_slots, self.num_memory_slots), dtype=tf.float32)
+        # Check if batch_size is initialized
+        if self.batch_size is not None:
+            self.linkage_matrix = tf.zeros(shape=(self.batch_size, self.num_memory_slots, self.num_memory_slots), dtype=tf.float32)
