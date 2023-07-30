@@ -143,23 +143,22 @@ class TemporalLinkageMatrix(tf.Module):
             
 class ReadTemporalLinkageMatrix(tf.Module):
     def __init__(self, num_memory_slots: int):
-        super().__init__()
-        self.num_memory_slots = num_memory_slots
-        self.batch_size = None
-        self.linkage_matrix = None  # type: Optional[tf.Tensor]
-
-    def update(self, prev_read_weights: tf.Tensor, read_weights: tf.Tensor):
-        """
-        Update the read linkage matrix based on the read weights.
+        """Initializes the ReadTemporalLinkageMatrix class.
         
-        Parameters
-        ----------
-        prev_read_weights : tf.Tensor
-            The read weights from the previous time step.
-            Shape: (batch_size, num_memory_slots)
-        read_weights : tf.Tensor
-            The read weights from the current time step.
-            Shape: (batch_size, num_memory_slots)
+        Args:
+            num_memory_slots: The number of memory slots in the external memory.
+        """
+        super().__init__()
+        self.num_memory_slots: int = num_memory_slots
+        self.batch_size = None
+        self.linkage_matrix: Optional[tf.Tensor] = None
+
+    def update(self, prev_read_weights: tf.Tensor, read_weights: tf.Tensor) -> None:
+        """Updates the temporal linkage matrix.
+
+        Args:
+            prev_read_weights: The read weights from the previous time step.
+            read_weights: The current read weights.
         """
         if self.batch_size is None or self.linkage_matrix is None:
             self.batch_size = tf.shape(read_weights)[0]
@@ -174,23 +173,10 @@ class ReadTemporalLinkageMatrix(tf.Module):
         self.linkage_matrix = term1 + term2
 
     def get(self) -> Optional[tf.Tensor]:
-        """
-        Return the current state of the read linkage matrix.
-        
-        Returns
-        -------
-        linkage_matrix : tf.Tensor, optional
-            The current state of the read linkage matrix.
-            Shape: (batch_size, num_memory_slots, num_memory_slots)
-            Returns None if the linkage matrix has not been initialized.
-        """
+        """Returns the current temporal linkage matrix."""
         return self.linkage_matrix
 
-    def reset_states(self):
-        """
-        Reset the states of the read linkage matrix.
-        
-        The linkage matrix is reset to zeros.
-        """
+    def reset_states(self) -> None:
+        """Resets the state of the temporal linkage matrix."""
         if self.batch_size is not None:
             self.linkage_matrix = tf.zeros(shape=(self.batch_size, self.num_memory_slots, self.num_memory_slots), dtype=tf.float32)

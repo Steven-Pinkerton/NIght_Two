@@ -286,6 +286,7 @@ class TestContentAddressableReadHeadWithLinkage(unittest.TestCase):
         self.assertNotEqual(np.sum(initial_matrix - updated_matrix), 0)
 
     def test_read_weights_update(self):
+        self.read_head(self.memory, self.controller_output)
         initial_weights = self.read_head.get_prev_read_weights()
         self.read_head(self.memory, self.controller_output)
         updated_weights = self.read_head.get_prev_read_weights()
@@ -303,6 +304,3 @@ class TestContentAddressableReadHeadWithLinkage(unittest.TestCase):
         reset_matrix = self.read_head.get_temporal_linkage_matrix()
         self.assertTrue(np.all(reset_weights == 0))
         self.assertTrue(np.all(reset_matrix == 0))
-
-if __name__ == '__main__':
-    unittest.main()
