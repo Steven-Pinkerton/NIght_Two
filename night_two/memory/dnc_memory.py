@@ -297,3 +297,65 @@ class ContentAddressableWriteHeadWithLinkage(tf.Module):
 
     def get_prev_write_weights(self):
         return self.prev_write_weights
+    
+    
+class ContentAddressableReadHeadWithLinkage(tf.Module):
+    def __init__(self, memory_size: int, num_memory_slots: int):
+        super().__init__()
+        self.memory_size = memory_size
+        self.num_memory_slots = num_memory_slots
+
+        # Initialize the temporal linkage matrix
+        self.temporal_linkage_matrix = TemporalLinkageMatrix(num_memory_slots)
+
+        # Initialize the previous read weights as zeros
+        self.prev_read_weights = tf.zeros(shape=(num_memory_slots,), dtype=tf.float32)
+
+        self.reset_states()
+
+    def call(self, memory: tf.Tensor, controller_output: tf.Tensor) -> tf.Tensor:
+        # Infer batch size from the controller output
+        self.batch_size = tf.shape(controller_output)[0]
+        
+        # Initialize the previous read weights here
+        self.prev_read_weights = tf.zeros(shape=(self.batch_size, self.num_memory_slots,), dtype=tf.float32)
+
+        key, strength = self._parse_controller_output(controller_output)
+
+        # Reshape the key to match the shape of memory
+        key = tf.reshape(key, [-1, 1, self.memory_size])
+
+        similarities = tf.keras.losses.cosine_similarity(key, memory)
+        self.read_weights = tf.nn.softmax(strength * similarities, axis=1)
+
+        # Use the read weights to read from the memory
+        read_vectors = tf.einsum('ij,ijk->ik', self.read_weights, memory)
+
+        # Update the temporal linkage matrix based on the previous and current read weights
+        self.temporal_linkage_matrix.update(self.prev_read_weights, self.read_weights)
+
+        # Update the previous read weights with the current read weights
+        self.prev_read_weights = self.read_weights
+
+        return read_vectors
+
+    def reset_states(self):
+        # Reset the previous read weights and the temporal linkage matrix when resetting the states of the head
+        self.prev_read_weights = tf.zeros(shape=(self.batch_size, self.num_memory_slots,), dtype=tf.float32)
+        self.temporal_linkage_matrix.reset_states()
+
+    def get_read_weights(self):
+        return self.read_weights
+
+    def get_temporal_linkage_matrix(self):
+        return self.temporal_linkage_matrix.get()
+
+    def _parse_controller_output(self, controller_output: tf.Tensor):
+        # Implement parsing of controller output here.
+        # The output size would be the sum of the sizes of the key and the strength.
+        key = controller_output[:, :self.memory_size]
+        strength = tf.nn.softplus(controller_output[:, self.memory_size:])  # Ensure the strength is non-negative
+        return key, strength
+
+    def get_prev_read_weights(self):
+        return self.prev_read_weights
