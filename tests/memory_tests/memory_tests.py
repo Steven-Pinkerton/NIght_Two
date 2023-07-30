@@ -6,7 +6,7 @@ from tensorflow.keras.layers import LSTM
 from night_two.memory.memory_matrix import MemoryMatrix
 from night_two.memory.content_addressable_memory import ContentAddressableMemoryUnit
 from night_two.memory.temporal_linkage_matrix import TemporalLinkageMemoryUnit
-from night_two.memory.dnc_memory import ContentAddressableDNC, ReadHead, WriteHead, DNC, ContentAddressableWriteHeadWithLinkage
+from night_two.memory.dnc_memory import ContentAddressableDNC, ContentAddressableReadHeadWithLinkage, ReadHead, WriteHead, DNC, ContentAddressableWriteHeadWithLinkage
 
 class TestMemoryMatrix(unittest.TestCase):
 
@@ -262,6 +262,47 @@ class TestContentAddressableWriteHeadWithLinkage(unittest.TestCase):
             self.assertTrue(np.allclose(temp_linkage_matrix.numpy(), np.zeros((self.batch_size, self.num_memory_slots, self.num_memory_slots))))
         else:
             self.assertEqual(temp_linkage_matrix, None)
-        
+             
+class TestContentAddressableReadHeadWithLinkage(unittest.TestCase):
+    def setUp(self):
+        self.memory_size = 5
+        self.num_memory_slots = 10
+        self.batch_size = 2
+        self.controller_output_size = self.memory_size + 1  # Key size + strength
+
+        self.memory = tf.random.normal(shape=(self.batch_size, self.num_memory_slots, self.memory_size))
+        self.controller_output = tf.random.normal(shape=(self.batch_size, self.controller_output_size))
+
+        self.read_head = ContentAddressableReadHeadWithLinkage(self.memory_size, self.num_memory_slots)
+
+    def test_call_output_shape(self):
+        output = self.read_head(self.memory, self.controller_output)
+        self.assertEqual(output.shape, (self.batch_size, self.memory_size))
+
+    def test_temporal_linkage_matrix_update(self):
+        initial_matrix = self.read_head.get_temporal_linkage_matrix()
+        self.read_head(self.memory, self.controller_output)
+        updated_matrix = self.read_head.get_temporal_linkage_matrix()
+        self.assertNotEqual(np.sum(initial_matrix - updated_matrix), 0)
+
+    def test_read_weights_update(self):
+        initial_weights = self.read_head.get_prev_read_weights()
+        self.read_head(self.memory, self.controller_output)
+        updated_weights = self.read_head.get_prev_read_weights()
+        self.assertNotEqual(np.sum(initial_weights - updated_weights), 0)
+
+    def test_call_consistency(self):
+        output_1 = self.read_head(self.memory, self.controller_output)
+        output_2 = self.read_head(self.memory, self.controller_output)
+        self.assertTrue(np.allclose(output_1, output_2))
+
+    def test_reset_states(self):
+        self.read_head(self.memory, self.controller_output)
+        self.read_head.reset_states()
+        reset_weights = self.read_head.get_prev_read_weights()
+        reset_matrix = self.read_head.get_temporal_linkage_matrix()
+        self.assertTrue(np.all(reset_weights == 0))
+        self.assertTrue(np.all(reset_matrix == 0))
+
 if __name__ == '__main__':
     unittest.main()
