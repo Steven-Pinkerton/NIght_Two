@@ -306,7 +306,7 @@ class ContentAddressableReadHeadWithLinkage(tf.Module):
         self.num_memory_slots = num_memory_slots
 
         # Initialize the temporal linkage matrix
-        self.temporal_linkage_matrix = TemporalLinkageMatrix(num_memory_slots)
+        self.temporal_linkage_matrix = ReadTemporalLinkageMatrix(num_memory_slots)
 
         # Initialize the previous read weights as zeros
         self.prev_read_weights = tf.zeros(shape=(num_memory_slots,), dtype=tf.float32)
