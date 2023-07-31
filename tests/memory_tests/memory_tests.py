@@ -220,7 +220,7 @@ class TestContentAddressableWriteHeadWithLinkage(unittest.TestCase):
         self.batch_size = 2
 
         # Create an instance of the write head for the tests
-        self.write_head = ContentAddressableWriteHeadWithLinkage(self.memory_size, self.num_memory_slots)
+        self.write_head = ContentAddressableWriteHeadWithLinkage(self.memory_size, self.num_memory_slots, self.batch_size)
 
     def test_call(self):
         # Initialize memory with random values
@@ -231,7 +231,6 @@ class TestContentAddressableWriteHeadWithLinkage(unittest.TestCase):
 
         # Call the write head with the initial memory and controller outputs
         new_memory = self.write_head.call(initial_memory, controller_output)
-
 
         # Check the shape of the updated memory
         self.assertEqual(new_memory.shape, initial_memory.shape)
@@ -251,17 +250,11 @@ class TestContentAddressableWriteHeadWithLinkage(unittest.TestCase):
 
         # Check that the previous write weights have been reset
         prev_write_weights = self.write_head.get_prev_write_weights()
-        if prev_write_weights is not None:
-            self.assertTrue(np.allclose(prev_write_weights.numpy(), np.zeros((self.batch_size, self.num_memory_slots))))
-        else:
-            self.assertEqual(prev_write_weights, None)
+        self.assertTrue(np.allclose(prev_write_weights.numpy(), np.zeros((self.batch_size, self.num_memory_slots))))
 
         # Check that the temporal linkage matrix has been reset
         temp_linkage_matrix = self.write_head.get_temporal_linkage_matrix()
-        if temp_linkage_matrix is not None:
-            self.assertTrue(np.allclose(temp_linkage_matrix.numpy(), np.zeros((self.batch_size, self.num_memory_slots, self.num_memory_slots))))
-        else:
-            self.assertEqual(temp_linkage_matrix, None)
+        self.assertTrue(np.allclose(temp_linkage_matrix.numpy(), np.zeros((self.batch_size, self.num_memory_slots, self.num_memory_slots))))
              
 class TestContentAddressableReadHeadWithLinkage(unittest.TestCase):
     def setUp(self):
@@ -273,8 +266,10 @@ class TestContentAddressableReadHeadWithLinkage(unittest.TestCase):
         self.memory = tf.random.normal(shape=(self.batch_size, self.num_memory_slots, self.memory_size))
         self.controller_output = tf.random.normal(shape=(self.batch_size, self.controller_output_size))
 
-        self.read_head = ContentAddressableReadHeadWithLinkage(self.memory_size, self.num_memory_slots)
-
+        self.read_head = ContentAddressableReadHeadWithLinkage(self.memory_size, self.num_memory_slots, self.batch_size)
+        # Perform an initial update to avoid None values
+        self.read_head(self.memory, self.controller_output)
+        
     def test_call_output_shape(self):
         output = self.read_head(self.memory, self.controller_output)
         self.assertEqual(output.shape, (self.batch_size, self.memory_size))
@@ -288,8 +283,13 @@ class TestContentAddressableReadHeadWithLinkage(unittest.TestCase):
     def test_read_weights_update(self):
         self.read_head(self.memory, self.controller_output)
         initial_weights = self.read_head.get_prev_read_weights()
+
+        # Create a new controller output
+        self.controller_output = tf.random.normal(shape=(self.batch_size, self.controller_output_size))
+
         self.read_head(self.memory, self.controller_output)
         updated_weights = self.read_head.get_prev_read_weights()
+
         self.assertNotEqual(np.sum(initial_weights - updated_weights), 0)
 
     def test_call_consistency(self):
@@ -304,3 +304,51 @@ class TestContentAddressableReadHeadWithLinkage(unittest.TestCase):
         reset_matrix = self.read_head.get_temporal_linkage_matrix()
         self.assertTrue(np.all(reset_weights == 0))
         self.assertTrue(np.all(reset_matrix == 0))
+        
+    def test_read_weights_sum(self):
+        self.read_head(self.memory, self.controller_output)
+        read_weights = self.read_head.get_read_weights()
+        self.assertTrue(np.allclose(np.sum(read_weights.numpy(), axis=-1), np.ones(self.batch_size)))
+        
+    def test_read_vectors_shape(self):
+        read_vectors = self.read_head(self.memory, self.controller_output)
+        self.assertEqual(read_vectors.shape, (self.batch_size, self.memory_size))    
+      
+class TestController(unittest.TestCase):
+    def setUp(self):
+        self.input_size = 5
+        self.hidden_size = 10
+        self.controller_output_size = 20
+        self.read_interface_size = 5
+        self.write_interface_size = 5
+        self.batch_size = 2
+
+        self.controller = Controller(
+            self.input_size, 
+            self.hidden_size, 
+            self.controller_output_size, 
+            self.read_interface_size, 
+            self.write_interface_size
+        )
+
+        self.inputs = tf.random.normal(shape=(self.batch_size, self.input_size))
+        self.read_vectors = tf.random.normal(shape=(self.batch_size, self.read_interface_size))
+
+    def test_output_shape(self):
+        output, (state_h, state_c) = self.controller(self.inputs, self.read_vectors)
+        expected_output_shape = (self.batch_size, self.controller_output_size + self.read_interface_size + self.write_interface_size)
+        self.assertEqual(output.shape, expected_output_shape)
+
+    def test_lstm_states_shape(self):
+        _, (state_h, state_c) = self.controller(self.inputs, self.read_vectors)
+        expected_state_shape = (self.batch_size, self.hidden_size)
+        self.assertEqual(state_h.shape, expected_state_shape)
+        self.assertEqual(state_c.shape, expected_state_shape)
+
+    def test_output_consistency(self):
+        output_1, _ = self.controller(self.inputs, self.read_vectors)
+        output_2, _ = self.controller(self.inputs, self.read_vectors)
+        self.assertTrue(np.allclose(output_1.numpy(), output_2.numpy()))   
+
+if __name__ == '__main__':
+    unittest.main()       
