@@ -274,6 +274,7 @@ class ContentAddressableWriteHeadWithLinkage(tf.Module):
     def reset_states(self):
         # Reset the temporal linkage matrix when resetting the states of the head
         self.temporal_linkage_matrix.reset_states()
+        self.prev_write_weights = tf.zeros_like(self.prev_write_weights)
 
     def get_write_weights(self):
         return self.write_weights
@@ -320,6 +321,8 @@ class ContentAddressableReadHeadWithLinkage(tf.Module):
 
     def reset_states(self):
         self.read_temporal_linkage_matrix.reset_states()
+        self.prev_read_weights = tf.zeros_like(self.prev_read_weights)
+
 
     def get_read_weights(self) -> tf.Tensor:
         return self.read_weights
@@ -334,82 +337,34 @@ class ContentAddressableReadHeadWithLinkage(tf.Module):
 
     def get_prev_read_weights(self) -> Optional[tf.Tensor]:
         return self.prev_read_weights
-    
+
 class Controller(tf.Module):
-    def __init__(self, input_size: int, hidden_size: int, controller_output_size: int, read_interface_size: int, write_interface_size: int):
+    def __init__(self, input_dim: int, controller_units: int, controller_output_size: int):
         super().__init__()
-        self.lstm = tf.keras.layers.LSTM(hidden_size, return_sequences=True, return_state=True)
-        self.fc = tf.keras.layers.Dense(controller_output_size + read_interface_size + write_interface_size)
+        self.lstm = tf.keras.layers.LSTM(controller_units, return_sequences=True, return_state=True)
+        self.fc = tf.keras.layers.Dense(controller_output_size)
 
-    def call(self, inputs: tf.Tensor, read_vectors: tf.Tensor, states: Optional[Tuple[tf.Tensor, tf.Tensor]]=None) -> Tuple[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
-        # Concatenate the read vectors to the inputs
-        combined_input = tf.concat([inputs, read_vectors], axis=-1)
-
-        output, state_h, state_c = self.lstm(combined_input, initial_state=states)
+    def __call__(self, inputs: tf.Tensor, states: Optional[Tuple[tf.Tensor, tf.Tensor]]=None) -> Tuple[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
+        inputs = tf.expand_dims(inputs, 1)  # Adds a time step dimension
+        output, state_h, state_c = self.lstm(inputs, initial_state=states)
         output = self.fc(output)
         return output, (state_h, state_c)
-    
-    
-    def __init__(self, memory_size: int, num_memory_slots: int, controller_output_size: int, input_size: int, controller_units: int, num_read_heads: int, num_write_heads: int, read_interface_size: int, write_interface_size: int, batch_size: int):
-        super().__init__()
 
-        self.controller = Controller(input_size, controller_units, controller_output_size, read_interface_size * num_read_heads, write_interface_size * num_write_heads)
-
-        self.read_heads = [ContentAddressableReadHeadWithLinkage(memory_size, num_memory_slots, batch_size) for _ in range(num_read_heads)]
-        self.write_heads = [ContentAddressableWriteHeadWithLinkage(memory_size, num_memory_slots, batch_size) for _ in range(num_write_heads)]
-
-        self.memory = tf.Variable(tf.zeros(shape=(batch_size, num_memory_slots, memory_size), dtype=tf.float32), trainable=False)
-
-        
-    def __call__(self, input_data: tf.Tensor):
-        # reshape input to (batch_size, sequence_length, feature_size)
-        batch_size = tf.shape(input_data)[0]
-        input_data = tf.reshape(input_data, [batch_size, -1, self.input_size])
-
-        sequence_length = tf.shape(input_data)[1]
-
-        # Initialize read_vectors list with zeros for each read head
-        read_vectors = [tf.zeros(shape=(batch_size, self.memory_size)) for _ in self.read_heads]
-
-        for t in range(sequence_length):
-            # Read from memory before passing the controller's output for each read head
-            for i, read_head in enumerate(self.read_heads):
-                read_vectors[i] = read_head(self.memory)
-
-            # Concatenate all read vectors
-            concatenated_read_vectors = tf.concat(read_vectors, axis=-1)
-
-            # Controller's input is the original input concatenated with the read vectors
-            controller_output, (state_h, state_c) = self.controller(input_data[:, t, :], concatenated_read_vectors)
-
-            output_vector, read_interfaces, write_interfaces = tf.split(controller_output, [self.controller_output_size, len(self.read_heads)*self.read_interface_size, len(self.write_heads)*self.write_interface_size], axis=1)
-
-            # Write to memory after processing the controller's output for each write head
-            for i, write_head in enumerate(self.write_heads):
-                self.memory = write_head(self.memory, write_interfaces[i*self.write_interface_size:(i+1)*self.write_interface_size])
-
-        dnc_output = tf.concat([output_vector] + read_vectors, axis=-1)  # Here I'm assuming that you want to concatenate the output vector and the read vectors
-        return dnc_output
-
-    def reset_states(self):
-        for read_head in self.read_heads:
-            read_head.reset_states()
-        for write_head in self.write_heads:
-            write_head.reset_states()
-
-    def reset_memory(self):
-        self.memory.assign(tf.zeros_like(self.memory))
-        
-        
 class DNCTwo(tf.Module):
-    def __init__(self, memory_size: int, num_memory_slots: int, controller_output_size: int, input_size: int, controller_units: int, num_read_heads: int, num_write_heads: int, batch_size: int):
+    def __init__(self, memory_size: int, num_memory_slots: int, input_size: int, controller_units: int, num_read_heads: int, num_write_heads: int, batch_size: int, num_indicators: int, num_settings_per_indicator: int):
         super().__init__()
 
         self.input_size = input_size
         self.memory_size = memory_size
 
+        # Calculate the input dimension for the controller
+        input_dim = input_size + num_read_heads * memory_size
+
+        # Calculate output_dim based on the number of actions, indicators, and settings
+        output_dim = 5 + num_indicators + num_indicators * num_settings_per_indicator
+
         # Initialize the LSTM controller
-        self.controller = Controller(input_size, controller_units, controller_output_size)
+        self.controller = Controller(input_dim, controller_units, output_dim)
 
         # Initialize the read and write heads
         self.read_heads = [ContentAddressableReadHeadWithLinkage(memory_size, num_memory_slots, batch_size) for _ in range(num_read_heads)]
@@ -437,15 +392,15 @@ class DNCTwo(tf.Module):
             concatenated_read_vectors = tf.concat(read_vectors, axis=-1)
 
             # Controller's input is the original input concatenated with the read vectors
-            controller_output, (state_h, state_c) = self.controller(input_data[:, t, :], concatenated_read_vectors)
+            controller_input = tf.concat([input_data[:, t, :], concatenated_read_vectors], axis=-1)
+            controller_output, (state_h, state_c) = self.controller(controller_input)
 
-            output_vector, read_interfaces, write_interfaces = tf.split(controller_output, [self.controller_output_size, len(self.read_heads)*self.read_interface_size, len(self.write_heads)*self.write_interface_size], axis=1)
-
+            # I removed the splitting of the output vector as it's not clear how the read_interfaces and write_interfaces should be used. You can reintroduce it as needed.
             # Write to memory after processing the controller's output for each write head
             for i, write_head in enumerate(self.write_heads):
-                self.memory = write_head(self.memory, write_interfaces[i*self.write_interface_size:(i+1)*self.write_interface_size])
+                self.memory = write_head(self.memory, controller_output)  # Here I'm assuming that the controller output should be used for writing, adjust as needed.
 
-        dnc_output = tf.concat([output_vector] + read_vectors, axis=-1)  # Here I'm assuming that you want to concatenate the output vector and the read vectors
+        dnc_output = tf.concat([controller_output] + read_vectors, axis=-1)  # Here I'm assuming that you want to concatenate the output vector and the read vectors
         return dnc_output
 
     def reset_states(self):

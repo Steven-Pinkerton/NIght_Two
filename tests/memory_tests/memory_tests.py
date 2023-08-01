@@ -6,7 +6,7 @@ from tensorflow.keras.layers import LSTM
 from night_two.memory.memory_matrix import MemoryMatrix
 from night_two.memory.content_addressable_memory import ContentAddressableMemoryUnit
 from night_two.memory.temporal_linkage_matrix import TemporalLinkageMemoryUnit
-from night_two.memory.dnc_memory import ContentAddressableDNC, ContentAddressableReadHeadWithLinkage, ReadHead, WriteHead, DNC, ContentAddressableWriteHeadWithLinkage
+from night_two.memory.dnc_memory import ContentAddressableDNC, ContentAddressableReadHeadWithLinkage, ReadHead, WriteHead, DNC, ContentAddressableWriteHeadWithLinkage, Controller
 
 class TestMemoryMatrix(unittest.TestCase):
 
@@ -245,6 +245,15 @@ class TestContentAddressableWriteHeadWithLinkage(unittest.TestCase):
         self.assertEqual(temporal_linkage_matrix.shape, (self.batch_size, self.num_memory_slots, self.num_memory_slots))
 
     def test_reset_states(self):
+        # Initialize memory with random values
+        initial_memory = tf.random.uniform(shape=(self.batch_size, self.num_memory_slots, self.memory_size), minval=-1, maxval=1)
+
+        # Create some fake controller outputs
+        controller_output = tf.random.uniform(shape=(self.batch_size, 3*self.memory_size), minval=-1, maxval=1)
+
+        # Call the write head with the initial memory and controller outputs
+        _ = self.write_head.call(initial_memory, controller_output)
+
         # Call the reset_states method
         self.write_head.reset_states()
 
@@ -316,39 +325,34 @@ class TestContentAddressableReadHeadWithLinkage(unittest.TestCase):
       
 class TestController(unittest.TestCase):
     def setUp(self):
-        self.input_size = 5
-        self.hidden_size = 10
-        self.controller_output_size = 20
+        self.input_size = 10
+        self.hidden_size = 20
+        self.controller_output_size = 30
         self.read_interface_size = 5
         self.write_interface_size = 5
         self.batch_size = 2
 
-        self.controller = Controller(
-            self.input_size, 
-            self.hidden_size, 
-            self.controller_output_size, 
-            self.read_interface_size, 
-            self.write_interface_size
-        )
+        self.controller = Controller(input_dim=self.input_size, controller_units=self.hidden_size, controller_output_size=self.controller_output_size)
 
         self.inputs = tf.random.normal(shape=(self.batch_size, self.input_size))
         self.read_vectors = tf.random.normal(shape=(self.batch_size, self.read_interface_size))
 
     def test_output_shape(self):
-        output, (state_h, state_c) = self.controller(self.inputs, self.read_vectors)
-        expected_output_shape = (self.batch_size, self.controller_output_size + self.read_interface_size + self.write_interface_size)
+        output, (state_h, state_c) = self.controller(self.inputs)
+        output = tf.squeeze(output)  # This line removes dimensions of size 1
+        expected_output_shape = (self.batch_size, self.controller_output_size)
         self.assertEqual(output.shape, expected_output_shape)
 
     def test_lstm_states_shape(self):
-        _, (state_h, state_c) = self.controller(self.inputs, self.read_vectors)
+        _, (state_h, state_c) = self.controller(self.inputs)
         expected_state_shape = (self.batch_size, self.hidden_size)
         self.assertEqual(state_h.shape, expected_state_shape)
         self.assertEqual(state_c.shape, expected_state_shape)
 
     def test_output_consistency(self):
-        output_1, _ = self.controller(self.inputs, self.read_vectors)
-        output_2, _ = self.controller(self.inputs, self.read_vectors)
+        output_1, _ = self.controller(self.inputs)
+        output_2, _ = self.controller(self.inputs)
         self.assertTrue(np.allclose(output_1.numpy(), output_2.numpy()))   
 
 if __name__ == '__main__':
-    unittest.main()       
+    unittest.main()
