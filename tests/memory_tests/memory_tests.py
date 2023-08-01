@@ -354,5 +354,62 @@ class TestController(unittest.TestCase):
         output_2, _ = self.controller(self.inputs)
         self.assertTrue(np.allclose(output_1.numpy(), output_2.numpy()))   
 
+
+class TestDNCTwo(unittest.TestCase):
+    
+    def setUp(self):
+        self.memory_size = 10
+        self.num_memory_slots = 20
+        self.input_size = 5
+        self.controller_units = 50
+        self.num_read_heads = 3
+        self.num_write_heads = 2
+        self.batch_size = 4
+        self.num_indicators = 2
+        self.num_settings_per_indicator = 3
+
+        self.dnc = DNCTwo(self.memory_size, self.num_memory_slots, self.input_size, self.controller_units, 
+                          self.num_read_heads, self.num_write_heads, self.batch_size, 
+                          self.num_indicators, self.num_settings_per_indicator)
+
+    def test_initialization(self):
+        self.assertIsInstance(self.dnc.controller, Controller)
+        self.assertEqual(len(self.dnc.read_heads), self.num_read_heads)
+        self.assertEqual(len(self.dnc.write_heads), self.num_write_heads)
+        self.assertEqual(self.dnc.memory.shape, (self.batch_size, self.num_memory_slots, self.memory_size))
+
+    def test_call(self):
+        input_data = tf.random.uniform((self.batch_size, self.input_size))
+        output = self.dnc(input_data)
+
+        # Check output shape
+        expected_output_dim = self.dnc.controller.fc.units + self.num_read_heads * self.memory_size
+        self.assertEqual(output.shape, (self.batch_size, expected_output_dim))
+
+    def test_reset_states(self):
+        # Call dnc to modify states
+        input_data = tf.random.uniform((self.batch_size, self.input_size))
+        self.dnc(input_data)
+
+        self.dnc.reset_states()
+
+        for read_head in self.dnc.read_heads:
+            self.assertTrue(tf.reduce_all(read_head.get_read_weights() == tf.zeros((self.batch_size, self.num_memory_slots))))
+            self.assertIsNone(read_head.get_temporal_linkage_matrix())
+
+        for write_head in self.dnc.write_heads:
+            self.assertTrue(tf.reduce_all(write_head.get_write_weights() == tf.zeros((self.batch_size, self.num_memory_slots))))
+            self.assertIsNone(write_head.get_temporal_linkage_matrix())
+
+    def test_reset_memory(self):
+        # Call dnc to modify memory
+        input_data = tf.random.uniform((self.batch_size, self.input_size))
+        self.dnc(input_data)
+
+        self.dnc.reset_memory()
+
+        self.assertTrue(tf.reduce_all(self.dnc.memory == tf.zeros((self.batch_size, self.num_memory_slots, self.memory_size))))
+
+
 if __name__ == '__main__':
     unittest.main()
