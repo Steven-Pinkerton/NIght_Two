@@ -238,6 +238,7 @@ class ContentAddressableWriteHeadWithLinkage(tf.Module):
     def __init__(self, memory_size: int, num_memory_slots: int, batch_size: int):
         super().__init__()
         self.memory_size = memory_size
+        print(f"memory_size: {self.memory_size}")  
         self.num_memory_slots = num_memory_slots
 
         self.temporal_linkage_matrix = TemporalLinkageMatrix(num_memory_slots)
@@ -247,13 +248,17 @@ class ContentAddressableWriteHeadWithLinkage(tf.Module):
 
         self.reset_states()
 
+
     def call(self, memory: tf.Tensor, controller_output: tf.Tensor) -> tf.Tensor:
-        key, erase_vector, write_vector = self._parse_controller_output(controller_output)
+        batch_size = tf.shape(controller_output)[0]  # <-- Add this line
+        key, strength, erase_vector, write_vector = self._parse_controller_output(controller_output)
 
-        # Reshape the key to match the shape of memory
-        key = tf.reshape(key, [-1, 1, self.memory_size])
+        num_elements = tf.size(key).numpy()  # Check number of elements in the tensor
+        print(f"Number of elements in 'key': {num_elements}")  # Print the number of elements for debugging
 
-        similarities = tf.keras.losses.cosine_similarity(key, memory)
+        key = tf.reshape(key, [batch_size, 1, self.memory_size])
+
+        similarities = 1 - tf.keras.losses.cosine_similarity(key, memory)
         self.write_weights = tf.nn.softmax(similarities, axis=1)
 
         erase_vector_broadcasted = tf.broadcast_to(erase_vector[:, tf.newaxis, :], [tf.shape(self.prev_write_weights)[0], self.num_memory_slots, self.memory_size])
@@ -262,7 +267,7 @@ class ContentAddressableWriteHeadWithLinkage(tf.Module):
         write_term = tf.einsum('ij,ijk->ijk', self.write_weights, write_vector_broadcasted)
 
         next_memory_state = memory * (1 - erase_term) + write_term
-
+        
         # Update the temporal linkage matrix based on the previous and current write weights
         self.temporal_linkage_matrix.update(self.prev_write_weights, self.write_weights)
 
@@ -282,11 +287,19 @@ class ContentAddressableWriteHeadWithLinkage(tf.Module):
     def get_temporal_linkage_matrix(self):
         return self.temporal_linkage_matrix.get()
 
-    def _parse_controller_output(self, controller_output: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    def _parse_controller_output(self, controller_output: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+        print(f"controller_output shape: {controller_output.shape}")  # debug line
+        assert controller_output.shape[1] >= 4*self.memory_size, f"controller_output shape {controller_output.shape} is incompatible with memory_size {self.memory_size}"
         key = controller_output[:, :self.memory_size]
-        erase_vector = tf.sigmoid(controller_output[:, self.memory_size:self.memory_size*2])
-        write_vector = controller_output[:, self.memory_size*2:]  # The remaining part of the interface is the write vector
-        return key, erase_vector, write_vector
+        print(f"key shape: {key.shape}")  # debug line
+        strength = tf.nn.softplus(controller_output[:, self.memory_size:2*self.memory_size])
+        print(f"strength shape: {strength.shape}")  # debug line
+        erase_vector = tf.nn.sigmoid(controller_output[:, 2*self.memory_size:3*self.memory_size])
+        print(f"erase_vector shape: {erase_vector.shape}")  # debug line
+        write_vector = tf.nn.sigmoid(controller_output[:, 3*self.memory_size:])
+        print(f"write_vector shape: {write_vector.shape}")  # debug line
+        return key, strength, erase_vector, write_vector
+
 
     def get_prev_write_weights(self):
         return self.prev_write_weights
@@ -295,6 +308,7 @@ class ContentAddressableReadHeadWithLinkage(tf.Module):
     def __init__(self, memory_size: int, num_memory_slots: int, batch_size: int):
         super().__init__()
         self.memory_size = memory_size
+        print(f"memory_size: {self.memory_size}")  
         self.num_memory_slots = num_memory_slots
         self.read_temporal_linkage_matrix = ReadTemporalLinkageMatrix(num_memory_slots)
 
@@ -304,12 +318,19 @@ class ContentAddressableReadHeadWithLinkage(tf.Module):
         self.reset_states()
 
     def __call__(self, memory: tf.Tensor, controller_output: tf.Tensor) -> tf.Tensor:
+        batch_size = tf.shape(controller_output)[0]  # <-- Add this line
         key, strength = self._parse_controller_output(controller_output)
 
-        key = tf.reshape(key, [-1, 1, self.memory_size])
+        num_elements = tf.size(key).numpy()  # Check number of elements in the tensor
+        print(f"Number of elements in 'key': {num_elements}")  # Print the number of elements for debugging
 
-        similarities = tf.keras.losses.cosine_similarity(key, memory)
+        assert num_elements == batch_size * self.memory_size, "Mismatch between the number of elements in 'key' and the expected number."
+
+
+        key = tf.reshape(key, [batch_size, 1, self.memory_size])
+        similarities = 1 - tf.keras.losses.cosine_similarity(key, memory)
         self.read_weights = tf.nn.softmax(strength * similarities, axis=1)
+
 
         read_vectors = tf.einsum('ij,ijk->ik', self.read_weights, memory)
 
@@ -323,7 +344,6 @@ class ContentAddressableReadHeadWithLinkage(tf.Module):
         self.read_temporal_linkage_matrix.reset_states()
         self.prev_read_weights = tf.zeros_like(self.prev_read_weights)
 
-
     def get_read_weights(self) -> tf.Tensor:
         return self.read_weights
 
@@ -331,8 +351,10 @@ class ContentAddressableReadHeadWithLinkage(tf.Module):
         return self.read_temporal_linkage_matrix.get()
 
     def _parse_controller_output(self, controller_output: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+        print(f"controller_output shape: {controller_output.shape}")  # debug line
         key = controller_output[:, :self.memory_size]
-        strength = tf.nn.softplus(controller_output[:, self.memory_size:self.memory_size+1])  # The '+1' assumes strength is a single value
+        print(f"key shape: {key.shape}")  # debug line
+        strength = tf.nn.softplus(controller_output[:, self.memory_size:2*self.memory_size])
         return key, strength
 
     def get_prev_read_weights(self) -> Optional[tf.Tensor]:
@@ -342,7 +364,7 @@ class Controller(tf.Module):
     def __init__(self, input_dim: int, controller_units: int, controller_output_size: int):
         super().__init__()
         self.lstm = tf.keras.layers.LSTM(controller_units, return_sequences=True, return_state=True)
-        self.fc = tf.keras.layers.Dense(controller_output_size)
+        self.fc = tf.keras.layers.Dense(controller_output_size)  # Increase the output size here
 
     def __call__(self, inputs: tf.Tensor, states: Optional[Tuple[tf.Tensor, tf.Tensor]]=None) -> Tuple[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
         inputs = tf.expand_dims(inputs, 1)  # Adds a time step dimension
@@ -357,59 +379,57 @@ class DNCTwo(tf.Module):
         self.input_size = input_size
         self.memory_size = memory_size
 
-        # Calculate the input dimension for the controller
         input_dim = input_size + num_read_heads * memory_size
+        output_dim = 4*memory_size  # Update the output_dim here
 
-        # Calculate output_dim based on the number of actions, indicators, and settings
-        output_dim = 5 + num_indicators + num_indicators * num_settings_per_indicator
-
-        # Initialize the LSTM controller
-        self.controller = Controller(input_dim, controller_units, output_dim)
-
-        # Initialize the read and write heads
+        self.controller = Controller(input_dim, controller_units, output_dim)  # Adjust the controller_output_size to be 4*memory_size
         self.read_heads = [ContentAddressableReadHeadWithLinkage(memory_size, num_memory_slots, batch_size) for _ in range(num_read_heads)]
         self.write_heads = [ContentAddressableWriteHeadWithLinkage(memory_size, num_memory_slots, batch_size) for _ in range(num_write_heads)]
-
-        # Initialize the memory
         self.memory = tf.zeros(shape=(batch_size, num_memory_slots, memory_size), dtype=tf.float32)
-
+        
     def __call__(self, input_data: tf.Tensor):
-        # reshape input to (batch_size, sequence_length, feature_size)
         batch_size = tf.shape(input_data)[0]
         input_data = tf.reshape(input_data, [batch_size, -1, self.input_size])
-
         sequence_length = tf.shape(input_data)[1]
-
-        # Initialize read_vectors list with zeros for each read head
         read_vectors = [tf.zeros(shape=(batch_size, self.memory_size)) for _ in self.read_heads]
+        initial_controller_input = tf.zeros(shape=(batch_size, self.input_size))
+        initial_controller_output, _ = self.controller(initial_controller_input)
 
         for t in range(sequence_length):
-            # Read from memory before passing the controller's output for each read head
             for i, read_head in enumerate(self.read_heads):
-                read_vectors[i] = read_head(self.memory, None)  # Assuming controller_output is not required for reading
+                if t == 0:
+                    read_vectors[i] = read_head(self.memory, initial_controller_output)
+                else:
+                    read_vectors[i] = read_head(self.memory, controller_output)
 
-            # Concatenate all read vectors
-            concatenated_read_vectors = tf.concat(read_vectors, axis=-1)
+            # ... (your code here)
 
-            # Controller's input is the original input concatenated with the read vectors
             controller_input = tf.concat([input_data[:, t, :], concatenated_read_vectors], axis=-1)
             controller_output, (state_h, state_c) = self.controller(controller_input)
+            
+            num_elements = tf.size(controller_output).numpy()  # Check number of elements in the tensor
+            print(f"Number of elements in 'controller_output': {num_elements}")  # Print the number of elements for debugging
 
-            # I removed the splitting of the output vector as it's not clear how the read_interfaces and write_interfaces should be used. You can reintroduce it as needed.
-            # Write to memory after processing the controller's output for each write head
+            print(f"controller_output at time {t}: {controller_output}")
+            print(f"Controller output shape: {controller_output.shape}")  # Debug line
+            
+            assert num_elements == batch_size * output_dim, "Mismatch between the number of elements in 'controller_output' and the expected number."
+
+
             for i, write_head in enumerate(self.write_heads):
-                self.memory = write_head(self.memory, controller_output)  # Here I'm assuming that the controller output should be used for writing, adjust as needed.
+                self.memory = write_head(self.memory, controller_output)
+                print(f"Updated memory after write head {i} at time {t}: {self.memory}")
+                print(f"Memory shape after write head {i}: {self.memory.shape}")  # Debug line
 
-        dnc_output = tf.concat([controller_output] + read_vectors, axis=-1)  # Here I'm assuming that you want to concatenate the output vector and the read vectors
+
+        dnc_output = tf.concat([controller_output] + read_vectors, axis=-1)
         return dnc_output
 
     def reset_states(self):
-        """Reset the read and write heads, but not the memory."""
         for read_head in self.read_heads:
             read_head.reset_states()
         for write_head in self.write_heads:
             write_head.reset_states()
 
     def reset_memory(self):
-        """Reset the memory."""
         self.memory = tf.zeros_like(self.memory)

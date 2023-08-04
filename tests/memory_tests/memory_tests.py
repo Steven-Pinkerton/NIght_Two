@@ -6,7 +6,7 @@ from tensorflow.keras.layers import LSTM
 from night_two.memory.memory_matrix import MemoryMatrix
 from night_two.memory.content_addressable_memory import ContentAddressableMemoryUnit
 from night_two.memory.temporal_linkage_matrix import TemporalLinkageMemoryUnit
-from night_two.memory.dnc_memory import ContentAddressableDNC, ContentAddressableReadHeadWithLinkage, ReadHead, WriteHead, DNC, ContentAddressableWriteHeadWithLinkage, Controller
+from night_two.memory.dnc_memory import ContentAddressableDNC, ContentAddressableReadHeadWithLinkage, ReadHead, WriteHead, DNC, ContentAddressableWriteHeadWithLinkage, Controller, DNCTwo
 
 class TestMemoryMatrix(unittest.TestCase):
 
@@ -227,7 +227,7 @@ class TestContentAddressableWriteHeadWithLinkage(unittest.TestCase):
         initial_memory = tf.random.uniform(shape=(self.batch_size, self.num_memory_slots, self.memory_size), minval=-1, maxval=1)
 
         # Create some fake controller outputs
-        controller_output = tf.random.uniform(shape=(self.batch_size, 3*self.memory_size), minval=-1, maxval=1)
+        controller_output = tf.random.uniform(shape=(self.batch_size, 4*self.memory_size), minval=-1, maxval=1)  # Change here
 
         # Call the write head with the initial memory and controller outputs
         new_memory = self.write_head.call(initial_memory, controller_output)
@@ -249,7 +249,7 @@ class TestContentAddressableWriteHeadWithLinkage(unittest.TestCase):
         initial_memory = tf.random.uniform(shape=(self.batch_size, self.num_memory_slots, self.memory_size), minval=-1, maxval=1)
 
         # Create some fake controller outputs
-        controller_output = tf.random.uniform(shape=(self.batch_size, 3*self.memory_size), minval=-1, maxval=1)
+        controller_output = tf.random.uniform(shape=(self.batch_size, 4*self.memory_size), minval=-1, maxval=1)
 
         # Call the write head with the initial memory and controller outputs
         _ = self.write_head.call(initial_memory, controller_output)
@@ -365,8 +365,8 @@ class TestDNCTwo(unittest.TestCase):
         self.num_read_heads = 3
         self.num_write_heads = 2
         self.batch_size = 4
-        self.num_indicators = 2
-        self.num_settings_per_indicator = 3
+        self.num_indicators = 10
+        self.num_settings_per_indicator = 20
 
         self.dnc = DNCTwo(self.memory_size, self.num_memory_slots, self.input_size, self.controller_units, 
                           self.num_read_heads, self.num_write_heads, self.batch_size, 
