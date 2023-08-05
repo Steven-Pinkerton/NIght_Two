@@ -324,6 +324,7 @@ class ContentAddressableReadHeadWithLinkage(tf.Module):
         num_elements = tf.size(key).numpy()  # Check number of elements in the tensor
         print(f"Number of elements in 'key': {num_elements}")  # Print the number of elements for debugging
 
+        print(f'key.shape: {key.shape}, expected shape: ({batch_size}, {self.memory_size}), actual number of elements: {num_elements}, expected number of elements: {batch_size * self.memory_size}')
         assert num_elements == batch_size * self.memory_size, "Mismatch between the number of elements in 'key' and the expected number."
 
 
@@ -360,29 +361,30 @@ class ContentAddressableReadHeadWithLinkage(tf.Module):
     def get_prev_read_weights(self) -> Optional[tf.Tensor]:
         return self.prev_read_weights
 
-class Controller(tf.Module):
-    def __init__(self, input_dim: int, controller_units: int, controller_output_size: int):
-        super().__init__()
-        self.lstm = tf.keras.layers.LSTM(controller_units, return_sequences=True, return_state=True)
-        self.fc = tf.keras.layers.Dense(controller_output_size)  # Increase the output size here
+class Controller(tf.keras.Model):
+    def __init__(self, hidden_size):
+        super(Controller, self).__init__()
+        self.lstm = tf.keras.layers.LSTM(hidden_size, return_sequences=True, return_state=True)
 
-    def __call__(self, inputs: tf.Tensor, states: Optional[Tuple[tf.Tensor, tf.Tensor]]=None) -> Tuple[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
-        inputs = tf.expand_dims(inputs, 1)  # Adds a time step dimension
-        output, state_h, state_c = self.lstm(inputs, initial_state=states)
-        output = self.fc(output)
-        return output, (state_h, state_c)
+    def call(self, inputs, states):
+        return self.lstm(inputs, initial_state=states)
 
+    def get_initial_state(self, inputs=None, batch_size=None):
+        return self.lstm.get_initial_state(inputs)
+    
+    
+    
 class DNCTwo(tf.Module):
     def __init__(self, memory_size: int, num_memory_slots: int, input_size: int, controller_units: int, num_read_heads: int, num_write_heads: int, batch_size: int, num_indicators: int, num_settings_per_indicator: int):
         super().__init__()
 
         self.input_size = input_size
         self.memory_size = memory_size
+        self.output_dim = 4 * memory_size  # Output dimension for the controller
 
         input_dim = input_size + num_read_heads * memory_size
-        output_dim = 4*memory_size  # Update the output_dim here
 
-        self.controller = Controller(input_dim, controller_units, output_dim)  # Adjust the controller_output_size to be 4*memory_size
+        self.controller = Controller(input_dim, controller_units, self.output_dim)  # Adjust the controller_output_size to be 4*memory_size
         self.read_heads = [ContentAddressableReadHeadWithLinkage(memory_size, num_memory_slots, batch_size) for _ in range(num_read_heads)]
         self.write_heads = [ContentAddressableWriteHeadWithLinkage(memory_size, num_memory_slots, batch_size) for _ in range(num_write_heads)]
         self.memory = tf.zeros(shape=(batch_size, num_memory_slots, memory_size), dtype=tf.float32)
@@ -391,38 +393,29 @@ class DNCTwo(tf.Module):
         batch_size = tf.shape(input_data)[0]
         input_data = tf.reshape(input_data, [batch_size, -1, self.input_size])
         sequence_length = tf.shape(input_data)[1]
-        read_vectors = [tf.zeros(shape=(batch_size, self.memory_size)) for _ in self.read_heads]
+        
         initial_controller_input = tf.zeros(shape=(batch_size, self.input_size))
         initial_controller_output, _ = self.controller(initial_controller_input)
 
         for t in range(sequence_length):
-            for i, read_head in enumerate(self.read_heads):
-                if t == 0:
-                    read_vectors[i] = read_head(self.memory, initial_controller_output)
-                else:
-                    read_vectors[i] = read_head(self.memory, controller_output)
-
-            # ... (your code here)
-
-            controller_input = tf.concat([input_data[:, t, :], concatenated_read_vectors], axis=-1)
-            controller_output, (state_h, state_c) = self.controller(controller_input)
+            controller_input = tf.concat([input_data[:, t, :], tf.concat([head.get_prev_read_weights() for head in self.read_heads], axis=-1)], axis=-1)
+            controller_output, _ = self.controller(controller_input)
+            # Debugging steps
+            num_elements = tf.size(controller_output).numpy()  # Get number of elements in controller output
+            print(f"Number of elements in 'controller_output' at time {t}: {num_elements}")  # Print the number of elements for debugging
+            print(f"controller_output at time {t}: {controller_output}")  # Print controller output at each time step
+            print(f"Controller output shape at time {t}: {controller_output.shape}")  # Print controller output shape
             
-            num_elements = tf.size(controller_output).numpy()  # Check number of elements in the tensor
-            print(f"Number of elements in 'controller_output': {num_elements}")  # Print the number of elements for debugging
-
-            print(f"controller_output at time {t}: {controller_output}")
-            print(f"Controller output shape: {controller_output.shape}")  # Debug line
-            
-            assert num_elements == batch_size * output_dim, "Mismatch between the number of elements in 'controller_output' and the expected number."
-
+            # Assert that the number of elements in controller output matches expectation
+            assert num_elements == batch_size * self.output_dim, f"Mismatch between the number of elements in 'controller_output' at time {t} and the expected number."
 
             for i, write_head in enumerate(self.write_heads):
                 self.memory = write_head(self.memory, controller_output)
-                print(f"Updated memory after write head {i} at time {t}: {self.memory}")
-                print(f"Memory shape after write head {i}: {self.memory.shape}")  # Debug line
 
+            for i, read_head in enumerate(self.read_heads):
+                read_head(self.memory, controller_output)
 
-        dnc_output = tf.concat([controller_output] + read_vectors, axis=-1)
+        dnc_output = tf.concat([controller_output] + [head.get_prev_read_weights() for head in self.read_heads], axis=-1)
         return dnc_output
 
     def reset_states(self):
