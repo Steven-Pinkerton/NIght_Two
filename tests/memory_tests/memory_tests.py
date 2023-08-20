@@ -5,8 +5,8 @@ import tensorflow as tf
 from keras.layers import LSTM
 from night_two.memory.memory_matrix import MemoryMatrix
 from night_two.memory.content_addressable_memory import ContentAddressableMemoryUnit
-from night_two.memory.temporal_linkage_matrix import TemporalLinkageMemoryUnit
-from night_two.memory.dnc_memory import ContentAddressableDNC, ContentAddressableReadHeadWithLinkage, ReadHead, WriteHead, DNC, ContentAddressableWriteHeadWithLinkage, Controller, DNCTwo
+from night_two.memory.temporal_linkage_matrix import TemporalLinkageMatrix, TemporalLinkageMemoryUnit
+from night_two.memory.dnc_memory import ContentAddressableDNC, DNCState, Memory, ReadHead, WriteHead, DNC, Controller, DNCTwo
 
 class TestMemoryMatrix(unittest.TestCase):
 
@@ -228,6 +228,76 @@ class TestController(unittest.TestCase):
 
         # Check the output shape
         self.assertEqual(output.shape, (10, 256))  # batch_size, hidden_state_size
+
+class TestControllerTwo(unittest.TestCase):
+    
+    def setUp(self):
+        # This method is called before each test. You can initialize common setups here.
+        self.hidden_size = 256
+        self.controller = Controller(self.hidden_size)
+        
+    def test_controller_initialization(self):
+        self.assertEqual(self.controller.lstm.units, self.hidden_size, "Incorrect hidden size")
+        
+    def test_controller_call(self):
+        batch_size = 32
+        input_dim = 12
+
+        inputs = tf.random.normal((batch_size, 1, input_dim))
+        states = self.controller.get_initial_state(inputs, batch_size)
+    
+        outputs, hidden_state, cell_state = self.controller(inputs, states)
+        new_states = (hidden_state, cell_state)
+
+        
+        self.assertEqual(outputs.shape, (batch_size, 1, self.hidden_size), "Incorrect output shape")
+        self.assertEqual(len(new_states), 2, "Expected two states (h and c for LSTM)")
+
+class TestDNCTwo(unittest.TestCase):
+
+    def setUp(self):
+        # This method is called before each test. You can initialize common setups here.
+        self.input_dim = 12
+        self.num_memory_slots = 128
+        self.memory_vector_dim = 20
+        self.num_read_heads = 4
+        self.controller_hidden_size = 256
+        self.dnc = DNCTwo(self.input_dim, self.num_memory_slots, self.memory_vector_dim, self.num_read_heads, self.controller_hidden_size)
+
+    def test_dnc_initialization(self):
+        # Check individual components
+        self.assertEqual(self.dnc.controller.lstm.units, self.input_dim + self.num_read_heads * self.memory_vector_dim, "Incorrect controller hidden size")
+        self.assertIsInstance(self.dnc.memory, Memory, "Memory component missing or not initialized")
+        self.assertIsInstance(self.dnc.temporal_linkage_matrix, TemporalLinkageMatrix, "TemporalLinkageMatrix component missing or not initialized")
+        # ... and so on for other components
+
+    def test_dnc_forward(self):
+        batch_size = 32
+        inputs = tf.random.normal((batch_size, 1, self.input_dim))
+
+        # Create an initial state
+        memory_init = tf.zeros((batch_size, self.num_memory_slots, self.memory_vector_dim))
+        read_vectors_init = tf.zeros((batch_size, self.num_read_heads, self.memory_vector_dim))
+        read_weights_init = tf.zeros((batch_size, self.num_read_heads, self.num_memory_slots))
+        write_weights_init = tf.zeros((batch_size, self.num_memory_slots))
+        linkage_matrix_init = tf.zeros((batch_size, self.num_memory_slots, self.num_memory_slots))
+        precedence_weights_init = tf.zeros((batch_size, self.num_memory_slots))
+        controller_state_init = (tf.zeros((batch_size, self.controller_hidden_size)), tf.zeros((batch_size, self.controller_hidden_size)))  # Assuming it's an LSTM with hidden and cell state
+
+        prev_state = DNCState(
+            memory=memory_init,
+            read_vectors=read_vectors_init,
+            read_weights=read_weights_init,
+            write_weights=write_weights_init,
+            linkage_matrix=linkage_matrix_init,
+            precedence_weights=precedence_weights_init,
+            controller_state=controller_state_init
+        )
+
+        output, state = self.dnc.forward(inputs, prev_state)
+        
+        # Assertions
+        self.assertEqual(output.shape, (batch_size, 464), "Incorrect output shape")
 
 if __name__ == '__main__':
     unittest.main()
