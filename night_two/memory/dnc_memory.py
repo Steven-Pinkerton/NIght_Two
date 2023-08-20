@@ -762,3 +762,16 @@ class Memory(tf.Module):
         
         return weights
    
+    def read(self, memory_matrix, read_weights):
+        """Reads memory content using the read weights."""
+        
+        # Reshape read weights for matrix multiplication
+        read_weights = tf.reshape(read_weights, [tf.shape(read_weights)[0], -1, 1])
+        
+        # Multiply the memory matrix by the read weights 
+        read_vectors = tf.matmul(memory_matrix, read_weights)
+        
+        # Reshape read vectors to expected shape
+        read_vectors = tf.reshape(read_vectors, [tf.shape(read_vectors)[0], -1, self.word_size])
+
+        return read_vectors
