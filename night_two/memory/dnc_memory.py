@@ -392,6 +392,7 @@ class DNCTwo(tf.Module):
         self.memory_vector_dim = memory_vector_dim
         self.num_read_heads = num_read_heads
         self.controller_hidden_size = controller_hidden_size
+        
 
         # Controller
         self.controller = Controller(self.controller_hidden_size)
@@ -446,15 +447,32 @@ class DNCTwo(tf.Module):
         # Calculate read and write weights, and read vectors. This is based on the controller output and the previous state.
         # These weights and vectors will be used in reading from and writing to memory. This corresponds to steps 2 and 3 
         # of our data flow plan. 
-        read_weights, write_weights, read_vectors = self._calculate_read_and_write(controller_output, prev_read_vectors, prev_memory, prev_read_weights, prev_linkage_matrix)
+        read_weights, write_weights, read_vectors = self._calculate_read_and_write(
+                    controller_output, 
+                    prev_read_vectors,
+                    prev_memory, # Pass prev_memory here
+                    prev_read_weights,
+                    prev_linkage_matrix
+                )
+
+        read_vectors = self.memory.read(prev_memory, read_weights)
+
+        if read_vectors is None:
+            raise ValueError("Read vectors cannot be None")
+
+            print("Read vectors shape:", read_vectors.shape)
 
         # Update memory. The memory is updated based on the previous memory, the write weights, and the controller output. 
         # This corresponds to step 5 of our data flow plan.
-        memory = self._update_memory(prev_memory, write_weights, controller_output)
+        erase_vector = self.erase_vector(controller_output)
+        add_vector = self.add_vector(controller_output)
+
+        
+        memory = self._update_memory(prev_memory, write_weights, erase_vector, add_vector)
 
         # Update linkage matrix. The linkage matrix is updated based on the previous and current write weights. 
         # This is part of step 3 of our data flow plan.
-        linkage_matrix = self._update_linkage_matrix(prev_write_weights, write_weights)
+        linkage_matrix = self._update_linkage_matrix(prev_write_weights, write_weights, prev_precedence_weights, prev_linkage_matrix)
 
         # Calculate precedence weights. The precedence weights are updated based on the previous precedence weights and 
         # the current write weights. This is also part of step 3 of our data flow plan.
@@ -478,7 +496,7 @@ class DNCTwo(tf.Module):
 
         return output, state
         
-    def _calculate_read_and_write(self, controller_output, prev_read_vectors, prev_memory, prev_read_weights, prev_linkage_matrix):
+    def _calculate_read_and_write(self, controller_output, prev_read_vectors, memory_matrix, prev_read_weights, prev_linkage_matrix):
         """
         Calculate read and write weights and read vectors for the current time step.
 
@@ -495,6 +513,7 @@ class DNCTwo(tf.Module):
                 write_weights (tf.Tensor): shape (batch_size, 128).
                 read_vectors (tf.Tensor): shape (batch_size, 4, 20).
         """
+        print("Memory matrix shape:", memory_matrix.shape)
 
         # We calculate the interface parameters from the controller output. These are the parameters for the read and 
         # write heads, and they include the key vectors, strengths, and interpolation gate for each head. 
@@ -504,12 +523,20 @@ class DNCTwo(tf.Module):
         # We then calculate the read and write weights based on the previous memory, read weights, the temporal linkage 
         # matrix, and the read and write parameters. The 'calculate_read_weights' and 'calculate_write_weights' methods 
         # may involve operations such as content-based addressing and temporal linking. 
-        read_weights = self.calculate_read_weights(read_params, prev_memory, prev_read_weights, prev_linkage_matrix)
-        write_weights = self.calculate_write_weights(write_params, prev_memory)
+        read_weights = self.calculate_read_weights(read_params, memory_matrix, prev_read_weights, prev_linkage_matrix)
+        write_weights = self.calculate_write_weights(write_params, memory_matrix)
+
 
         # Once we have the read weights, we can read from memory. We retrieve information from memory based on the read weights,
         # resulting in read vectors. This corresponds to step 3 of our data flow plan.
-        read_vectors = self.memory.read(prev_memory, read_weights)
+        # Memory.read()
+        print("Memory matrix shape:", memory_matrix.shape)
+        print("Read weights shape:", read_weights.shape)
+
+        assert memory_matrix.shape[-1] == self.memory.word_size, "Last dimension must match word size"
+
+
+        read_vectors = self.memory.read(memory_matrix, read_weights)
 
         return read_weights, write_weights, read_vectors
     
@@ -542,7 +569,7 @@ class DNCTwo(tf.Module):
 
         return memory
     
-    def _update_linkage_matrix(self, prev_write_weights, write_weights):
+    def _update_linkage_matrix(self, prev_write_weights, write_weights, prev_precedence_weights, prev_linkage_matrix):
         """
         Update the linkage matrix.
 
@@ -559,21 +586,25 @@ class DNCTwo(tf.Module):
         # where w_t is the write weight at time t.
         
         prev_summed_write_weights = tf.reduce_sum(prev_write_weights, axis=1, keepdims=True)
-        precedence_weight = (1 - prev_summed_write_weights) * self.prev_precedence_weight + prev_write_weights
+        precedence_weight = (1 - prev_summed_write_weights) * prev_precedence_weights + prev_write_weights
 
         # Update the linkage matrix L using the formula:
         # L_t(i, j) = (1 - w_t(i) - w_t(j)) * L_{t-1}(i, j) + w_t(i) * p_{t-1}(j)
         # This formula updates the linkage matrix based on the current write weights and the precedence weights.
         
         expanded_write_weights = tf.expand_dims(write_weights, 2)  # Expanding to shape (batch_size, 128, 1)
-        expanded_precedence_weight = tf.expand_dims(self.prev_precedence_weight, 1)  # Expanding to shape (batch_size, 1, 128)
+        expanded_precedence_weight = tf.expand_dims(prev_precedence_weights, 1)
+        # Expanding to shape (batch_size, 1, 128)
         
         # Calculating the updated values for the linkage matrix
-        L = (1 - expanded_write_weights - tf.transpose(expanded_write_weights, perm=[0, 2, 1])) * self.prev_linkage_matrix + expanded_write_weights * expanded_precedence_weight
+        print("Shape of expanded_write_weights:", expanded_write_weights.shape)
+
+        L = (1 - expanded_write_weights - tf.transpose(expanded_write_weights, perm=[0, 2, 3, 1])) * prev_linkage_matrix + expanded_write_weights * expanded_precedence_weight
+
 
         # Update the precedence weight and linkage matrix for the next time step
-        self.prev_precedence_weight = precedence_weight
-        self.prev_linkage_matrix = L
+        #self.prev_precedence_weight = precedence_weight
+        #self.prev_linkage_matrix = L
 
         return L
     
@@ -763,15 +794,33 @@ class Memory(tf.Module):
         return weights
    
     def read(self, memory_matrix, read_weights):
-        """Reads memory content using the read weights."""
+
+        read_vectors = []
+
+        for i in range(read_weights.shape[1]):
+
+            # Extract read weights for current head
+            head_read_weights = read_weights[:, i, :]
+
+            # Reshape weight matrix for multiplication
+            head_read_weights = tf.reshape(head_read_weights, [tf.shape(head_read_weights)[0], -1, 1]) 
+
+            # Transpose weight matrix  
+            head_read_weights = tf.transpose(head_read_weights, perm=[0, 2, 1])
+
+            # Matrix multiplication to get read vector
+            head_read_vector = tf.matmul(head_read_weights, memory_matrix)
+            
+            read_vectors.append(head_read_vector)
         
-        # Reshape read weights for matrix multiplication
-        read_weights = tf.reshape(read_weights, [tf.shape(read_weights)[0], -1, 1])
-        
-        # Multiply the memory matrix by the read weights 
-        read_vectors = tf.matmul(memory_matrix, read_weights)
-        
-        # Reshape read vectors to expected shape
-        read_vectors = tf.reshape(read_vectors, [tf.shape(read_vectors)[0], -1, self.word_size])
+        # Stack the per-head read vectors into one tensor
+        read_vectors = tf.stack(read_vectors, axis=1)
+
+        print("Memory matrix shape:", memory_matrix.shape)
+        print("Read weights shape:", read_weights.shape)
+
+        assert read_vectors is not None, "Read vectors cannot be None"  
+
+        print("Read vectors shape:", read_vectors.shape)
 
         return read_vectors
