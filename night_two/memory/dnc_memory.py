@@ -368,7 +368,8 @@ class Controller(tf.keras.Model):
         self.lstm = tf.keras.layers.LSTM(hidden_size, return_sequences=True, return_state=True)
 
     def call(self, inputs, states):
-        return self.lstm(inputs, initial_state=states)
+        outputs, hidden_state, cell_state = self.lstm(inputs, states)
+        return outputs, (hidden_state, cell_state)
 
     def get_initial_state(self, inputs=None, batch_size=None):
         return self.lstm.get_initial_state(inputs)
@@ -393,11 +394,10 @@ class DNCTwo(tf.Module):
         self.num_read_heads = num_read_heads
         self.controller_hidden_size = controller_hidden_size
         
-
         # Controller
-        self.controller = Controller(self.controller_hidden_size)
+        self.controller = Controller(self.input_dim + self.num_read_heads * self.memory_vector_dim)
 
-        
+
         # Memory
         self.memory = Memory(self.num_memory_slots, self.memory_vector_dim)
 
@@ -439,10 +439,15 @@ class DNCTwo(tf.Module):
         # Unpack previous state
         prev_memory, prev_read_vectors, prev_read_weights, prev_write_weights, prev_linkage_matrix, prev_precedence_weights, prev_controller_state = prev_state
 
+        print("Number of read heads:", self.num_read_heads)
 
         # Pass input through controller. The controller takes in the input and the previous state and outputs a tensor of
         # shape (batch_size, 256) and an updated controller state. This is step 1 of our data flow plan.
-        controller_output, hidden_state, cell_state = self.controller(x, prev_controller_state)
+          # Pass input through controller  
+        controller_output, controller_state = self.controller(x, prev_controller_state)
+        
+        # Unpack controller state
+        hidden_state, cell_state = controller_state
 
         # Calculate read and write weights, and read vectors. This is based on the controller output and the previous state.
         # These weights and vectors will be used in reading from and writing to memory. This corresponds to steps 2 and 3 
@@ -467,7 +472,6 @@ class DNCTwo(tf.Module):
         erase_vector = self.erase_vector(controller_output)
         add_vector = self.add_vector(controller_output)
 
-        
         memory = self._update_memory(prev_memory, write_weights, erase_vector, add_vector)
 
         # Update linkage matrix. The linkage matrix is updated based on the previous and current write weights. 
@@ -491,7 +495,7 @@ class DNCTwo(tf.Module):
             write_weights=write_weights,
             linkage_matrix=linkage_matrix,
             precedence_weights=precedence_weights,
-            controller_state=controller_state,
+            controller_state=(hidden_state, cell_state),
         )
 
         return output, state
@@ -526,7 +530,6 @@ class DNCTwo(tf.Module):
         read_weights = self.calculate_read_weights(read_params, memory_matrix, prev_read_weights, prev_linkage_matrix)
         write_weights = self.calculate_write_weights(write_params, memory_matrix)
 
-
         # Once we have the read weights, we can read from memory. We retrieve information from memory based on the read weights,
         # resulting in read vectors. This corresponds to step 3 of our data flow plan.
         # Memory.read()
@@ -534,7 +537,6 @@ class DNCTwo(tf.Module):
         print("Read weights shape:", read_weights.shape)
 
         assert memory_matrix.shape[-1] == self.memory.word_size, "Last dimension must match word size"
-
 
         read_vectors = self.memory.read(memory_matrix, read_weights)
 
@@ -621,13 +623,15 @@ class DNCTwo(tf.Module):
         """
         
         # Calculating the sum across the memory locations of the write weights
-        summed_write_weights = tf.reduce_sum(write_weights, axis=1, keepdims=True)
-        
+        summed_write_weights = tf.reduce_sum(write_weights, axis=1)
+        print("summed_write_weights shape:", summed_write_weights.shape)
+            
         # Updating the precedence weights
-        precedence_weights = (1 - summed_write_weights) * prev_precedence_weights + write_weights
-
+        precedence_weights = (1 - summed_write_weights[:, tf.newaxis]) * prev_precedence_weights + write_weights
+        print("Shape after _calculate_precedence_weights:", precedence_weights.shape)
+            
         return precedence_weights
-
+    
     def _prepare_output(self, controller_output, read_vectors, precedence_weights):
         """
         Prepare the output tensor.
@@ -640,15 +644,55 @@ class DNCTwo(tf.Module):
         Returns:
             tf.Tensor: Final DNC output, shape depending on the output_dimension of the linear layer.
         """
+        print("Controller output shape:", controller_output.shape)
+        
+        print("Read vectors shape:", read_vectors.shape)
+        
+        print("Precedence weights shape:", precedence_weights.shape)
 
-        # Reshape read_vectors from (batch_size, 4, 20) to (batch_size, 80)
-        read_vectors_reshaped = tf.reshape(read_vectors, [tf.shape(read_vectors)[0], -1])
+        print("Read vectors original shape:", read_vectors.shape)
 
-        # Concatenate along the second dimension (axis=1)
-        concatenated_output = tf.concat([controller_output, read_vectors_reshaped, precedence_weights], axis=1)
+        read_vectors_reshaped = tf.reshape(read_vectors, [-1, self.num_read_heads, self.memory_vector_dim])
+        
+        print("Read vectors shape after reshaping:", read_vectors_reshaped.shape)  
+  
+        # Squeeze the controller_output to remove the extra dimension
+        controller_output_squeezed = tf.squeeze(controller_output, axis=1)
 
+        print("Controller output shape after squeezing:", controller_output_squeezed.shape)
+
+        print("Precedence weights original shape:", precedence_weights.shape)
+
+        # Reshape precedence weights to 2D
+        precedence_weights = tf.reshape(precedence_weights, [-1, self.num_memory_slots])
+
+        print("Precedence weights shape after reshaping:", precedence_weights.shape)
+        
+
+        # Expand dims 
+        #controller_output = tf.reshape(controller_output, [32, 256])
+        #controller_output = tf.expand_dims(controller_output, -1)
+        
+        # Transpose read vectors
+        read_vectors = tf.transpose(read_vectors, [0, 2, 1])
+
+        # Concatenate 
+        concatenated = tf.concat([controller, read_vectors, weights], axis=-1)
+                
+        # Concatenate along axis 1 
+        concatenated_output = tf.concat([
+                controller_output, 
+                read_vectors_reshaped,
+                precedence_weights
+            ], axis=-1)
+        
+        print("Concatenated output shape:", concatenated_output.shape)
+        
         # Pass the concatenated tensor through the linear layer
         final_output = self.output_layer(concatenated_output)
+
+        print("Final output shape:", final_output.shape)
+
 
         return final_output
     
@@ -682,7 +726,6 @@ class DNCTwo(tf.Module):
         
         write_params = self.write_key(controller_output), self.write_strength(controller_output)
         
-
         return read_params, write_params
 
     def calculate_read_weights(self, read_params, prev_memory, prev_read_weights, prev_linkage_matrix):
@@ -702,15 +745,12 @@ class DNCTwo(tf.Module):
         # Note: This is a simplistic implementation. In practice, more sophisticated mechanisms are used.
         read_keys, read_strengths = read_params
         
-        
         content_based_weights = self.memory.content_based_addressing(
                             prev_memory,
                             read_keys,
                             read_strengths,
                             self.num_read_heads)
 
-
-      
         # Using temporal linkage for forward and backward weights can be complex. As a simplification, we're only using content-based addressing here.
         read_weights = content_based_weights
 

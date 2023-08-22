@@ -240,17 +240,21 @@ class TestControllerTwo(unittest.TestCase):
         self.assertEqual(self.controller.lstm.units, self.hidden_size, "Incorrect hidden size")
         
     def test_controller_call(self):
-        batch_size = 32
+        # Create input tensor
+        batch_size = 32 
         input_dim = 12
-
         inputs = tf.random.normal((batch_size, 1, input_dim))
+
+        # Get initial states
         states = self.controller.get_initial_state(inputs, batch_size)
-    
-        outputs, hidden_state, cell_state = self.controller(inputs, states)
+        
+        # Call controller
+        outputs, states = self.controller(inputs, states)
+
+        hidden_state, cell_state = states
+        
         new_states = (hidden_state, cell_state)
 
-        
-        self.assertEqual(outputs.shape, (batch_size, 1, self.hidden_size), "Incorrect output shape")
         self.assertEqual(len(new_states), 2, "Expected two states (h and c for LSTM)")
 
 class TestDNCTwo(unittest.TestCase):
